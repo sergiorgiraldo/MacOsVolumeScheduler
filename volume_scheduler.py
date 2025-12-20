@@ -107,7 +107,7 @@ class VolumeScheduler:
             
             while self.running:
                 self.check_and_update_volume()
-                time.sleep(30)  # Check every 30 seconds
+                time.sleep(1800)  # Check every 30 minutes
                 
         except (KeyboardInterrupt, SystemExit):
             pass
