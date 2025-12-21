@@ -10,9 +10,13 @@ python volume_scheduler.py start
 
 python volume_scheduler.py stop
 
-## Edit the schedule
+## Edit the schedule (terminal)
 
 python volume_scheduler.py edit
+
+## Edit the schedule (visual)
+
+python volume_scheduler.py browser
 
 ## Check if it's running
 

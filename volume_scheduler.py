@@ -13,12 +13,15 @@ import time
 import signal
 import sys
 import logging
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import webbrowser
 
 # Configuration file path
 CONFIG_DIR = Path.home() / ".volume_scheduler"
 CONFIG_FILE = CONFIG_DIR / "schedule.json"
 PID_FILE = CONFIG_DIR / "scheduler.pid"
 LOG_FILE = CONFIG_DIR / "scheduler.log"
+HTML_FILE = Path(__file__).parent / "scheduler_ui.html"
 
 def setup_logging():
     """Setup logging to file"""
@@ -37,6 +40,7 @@ def setup_logging():
     return logging.getLogger(__name__)
 
 logger = setup_logging()
+
 class VolumeScheduler:
     def __init__(self):
         self.schedule = self.load_schedule()
@@ -143,6 +147,80 @@ class VolumeScheduler:
     def stop(self):
         """Stop the scheduler"""
         self.running = False
+
+
+class ScheduleHandler(BaseHTTPRequestHandler):
+    """HTTP request handler for web interface"""
+    
+    def log_message(self, format, *args):
+        """Suppress default logging"""
+        pass
+    
+    def do_GET(self):
+        """Handle GET requests"""
+        if self.path == "/" or self.path == "/index.html":
+            self.send_response(200)
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+            
+            # Read HTML from file
+            if HTML_FILE.exists():
+                with open(HTML_FILE, "r") as f:
+                    self.wfile.write(f.read().encode())
+            else:
+                self.wfile.write(b"<h1>Error: scheduler_ui.html not found</h1>")
+                
+        elif self.path == "/api/schedule":
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            scheduler = VolumeScheduler()
+            self.wfile.write(json.dumps(scheduler.schedule).encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+    
+    def do_POST(self):
+        """Handle POST requests"""
+        if self.path == "/api/schedule":
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            schedule = json.loads(post_data.decode())
+            
+            scheduler = VolumeScheduler()
+            scheduler.save_schedule(schedule)
+            
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "ok"}).encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+
+def start_web_server():
+    """Start the web server for browser interface"""
+    port = 8765
+    
+    if not HTML_FILE.exists():
+        print(f"Error: {HTML_FILE} not found!")
+        print("Please make sure scheduler_ui.html is in the same directory as this script.")
+        return
+    
+    server = HTTPServer(('localhost', port), ScheduleHandler)
+    
+    print(f"Starting web server at http://localhost:{port}")
+    print("Press Ctrl+C to stop the server")
+    
+    # Open browser
+    webbrowser.open(f'http://localhost:{port}')
+    
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nShutting down server...")
+        server.shutdown()
 
 
 def edit_schedule():
@@ -297,6 +375,7 @@ def main():
                 with open(PID_FILE, "r") as f:
                     pid = int(f.read().strip())
                 if is_process_running(pid):
+                    print(f"Scheduler already running (PID: {pid})")
                     return
             
             logger.info("Starting Volume Scheduler in background...")
@@ -315,6 +394,9 @@ def main():
         elif command == "edit":
             edit_schedule()
         
+        elif command == "browser":
+            start_web_server()
+        
         elif command == "status":
             if PID_FILE.exists():
                 with open(PID_FILE, "r") as f:
@@ -325,14 +407,15 @@ def main():
         
         else:
             print("Unknown command")
-            print("Usage: volume_scheduler.py [start|stop|edit|status]")
+            print("Usage: volume_scheduler.py [start|stop|edit|browser|status]")
     
     else:
         print("macOS Volume Scheduler")
         print("\nUsage:")
         print("  volume_scheduler.py start   - Start the scheduler")
         print("  volume_scheduler.py stop    - Stop the scheduler")
-        print("  volume_scheduler.py edit    - Edit schedule")
+        print("  volume_scheduler.py edit    - Edit schedule (CLI)")
+        print("  volume_scheduler.py browser - Edit schedule (Web UI)")
         print("  volume_scheduler.py status  - Check if running")
 
 
