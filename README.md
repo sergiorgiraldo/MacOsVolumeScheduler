@@ -1,8 +1,9 @@
 # Volume Scheduler
 
 chmod +x volume_scheduler.py
+chmod +x volume_scheduler_menu.py
 
-## Start the scheduler (runs in background)
+## Start the scheduler (runs in background; not needed if added to launchctl)
 
 python volume_scheduler.py start
 
@@ -14,13 +15,13 @@ python volume_scheduler.py stop
 
 python volume_scheduler.py edit
 
-## Edit the schedule (visual)
-
-python volume_scheduler.py browser
-
 ## Check if it's running
 
 python volume_scheduler.py status
+
+## Menu
+
+Application has an icon in menubar, where you can edit visually the schedule
 
 ## Create the plist file
 
@@ -68,4 +69,3 @@ if config does not exists or reset:
 ### sample
 
 `sample_schedule.json`
-
