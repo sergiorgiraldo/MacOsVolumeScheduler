@@ -128,7 +128,7 @@
             bottom: 0;
             left: 0;
             right: 0;
-            background: linear-gradient(to top, #667eea, #764ba2);
+            background: linear-gradient(to top, #c1953b, #f0b605);
             transition: height 0.3s;
             opacity: 0.8;
         }
@@ -220,16 +220,16 @@
 </head>
 <body>
     <div class="container">
-        <h1>🔊 Volume Scheduler</h1>
+        <h1>Volume Scheduler</h1>
         <p class="subtitle">Click on any cell to adjust the volume for that hour</p>
-        
+
         <div class="controls">
-            <button onclick="saveSchedule()">💾 Save Changes</button>
-            <button onclick="showBulkEdit()" class="secondary">✏️ Bulk Edit</button>
-            <button onclick="copyDay()" class="secondary">📋 Copy Day</button>
-            <button onclick="resetSchedule()" class="secondary">🔄 Reset to Defaults</button>
+            <button type="button" onclick="saveSchedule()">Save Changes</button>
+            <button type="button" onclick="showBulkEdit()" class="secondary">Bulk Edit</button>
+            <button type="button" onclick="copyDay()" class="secondary">Copy Day</button>
+            <button type="button" onclick="resetSchedule()" class="secondary">Reset to Defaults</button>
         </div>
-        
+
         <div class="schedule-grid">
             <table id="scheduleTable">
                 <thead>
@@ -248,10 +248,10 @@
                 </tbody>
             </table>
         </div>
-        
+
         <div id="status" class="status"></div>
     </div>
-    
+
     <div id="bulkEditModal" class="modal">
         <div class="modal-content">
             <h2>Bulk Edit</h2>
@@ -272,12 +272,12 @@
                 <input type="number" id="bulkVolume" min="0" max="100" value="70">
             </div>
             <div class="modal-buttons">
-                <button onclick="applyBulkEdit()">Apply</button>
-                <button onclick="closeBulkEdit()" class="secondary">Cancel</button>
+                <button type="button" onclick="applyBulkEdit()">Apply</button>
+                <button type="button" onclick="closeBulkEdit()" class="secondary">Cancel</button>
             </div>
         </div>
     </div>
-    
+
     <div id="copyDayModal" class="modal">
         <div class="modal-content">
             <h2>Copy Day Schedule</h2>
@@ -306,12 +306,12 @@
                 </select>
             </div>
             <div class="modal-buttons">
-                <button onclick="applyCopyDay()">Copy</button>
-                <button onclick="closeCopyDay()" class="secondary">Cancel</button>
+                <button type="button" onclick="applyCopyDay()">Copy</button>
+                <button type="button" onclick="closeCopyDay()" class="secondary">Cancel</button>
             </div>
         </div>
     </div>
-    
+
     <script>
         let schedule = {};
         const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];

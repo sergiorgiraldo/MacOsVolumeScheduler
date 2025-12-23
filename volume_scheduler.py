@@ -13,15 +13,15 @@ import time
 import signal
 import sys
 import logging
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import webbrowser
 
 # Configuration file path
 CONFIG_DIR = Path.home() / ".volume_scheduler"
 CONFIG_FILE = CONFIG_DIR / "schedule.json"
 PID_FILE = CONFIG_DIR / "scheduler.pid"
+MENU_PID_FILE = CONFIG_DIR / "menu.pid"
 LOG_FILE = CONFIG_DIR / "scheduler.log"
-HTML_FILE = Path(__file__).parent / "scheduler_ui.html"
+HTML_FILE = Path(__file__).parent / "volume_scheduler_ui.html"
+MENU_SCRIPT = Path(__file__).parent / "volume_scheduler_menu.py"
 
 def setup_logging():
     """Setup logging to file"""
@@ -148,80 +148,61 @@ class VolumeScheduler:
         """Stop the scheduler"""
         self.running = False
 
-
-class ScheduleHandler(BaseHTTPRequestHandler):
-    """HTTP request handler for web interface"""
-    
-    def log_message(self, format, *args):
-        """Suppress default logging"""
-        pass
-    
-    def do_GET(self):
-        """Handle GET requests"""
-        if self.path == "/" or self.path == "/index.html":
-            self.send_response(200)
-            self.send_header("Content-type", "text/html")
-            self.end_headers()
-            
-            # Read HTML from file
-            if HTML_FILE.exists():
-                with open(HTML_FILE, "r") as f:
-                    self.wfile.write(f.read().encode())
-            else:
-                self.wfile.write(b"<h1>Error: scheduler_ui.html not found</h1>")
-                
-        elif self.path == "/api/schedule":
-            self.send_response(200)
-            self.send_header("Content-type", "application/json")
-            self.end_headers()
-            scheduler = VolumeScheduler()
-            self.wfile.write(json.dumps(scheduler.schedule).encode())
-        else:
-            self.send_response(404)
-            self.end_headers()
-    
-    def do_POST(self):
-        """Handle POST requests"""
-        if self.path == "/api/schedule":
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
-            schedule = json.loads(post_data.decode())
-            
-            scheduler = VolumeScheduler()
-            scheduler.save_schedule(schedule)
-            
-            self.send_response(200)
-            self.send_header("Content-type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"status": "ok"}).encode())
-        else:
-            self.send_response(404)
-            self.end_headers()
-
-
-def start_web_server():
-    """Start the web server for browser interface"""
-    port = 8765
-    
-    if not HTML_FILE.exists():
-        print(f"Error: {HTML_FILE} not found!")
-        print("Please make sure scheduler_ui.html is in the same directory as this script.")
-        return
-    
-    server = HTTPServer(('localhost', port), ScheduleHandler)
-    
-    print(f"Starting web server at http://localhost:{port}")
-    print("Press Ctrl+C to stop the server")
-    
-    # Open browser
-    webbrowser.open(f'http://localhost:{port}')
+def start_menu_bar_app():
+    """Start the menu bar application"""
+    if not MENU_SCRIPT.exists():
+        logger.warning(f"Menu bar script not found at {MENU_SCRIPT}")
+        return False
     
     try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("\nShutting down server...")
-        server.shutdown()
+        # Start the menu bar app as a separate process
+        process = subprocess.Popen(
+            [sys.executable, str(MENU_SCRIPT)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True
+        )
+        
+        # Give it a moment to start
+        time.sleep(1)
+        
+        # Check if it's still running
+        if process.poll() is None:
+            # Save the PID
+            with open(MENU_PID_FILE, "w") as f:
+                f.write(str(process.pid))
+            logger.info(f"Menu bar app started (PID: {process.pid})")
+            return True
+        else:
+            logger.error("Menu bar app failed to start")
+            return False
+    except Exception as e:
+        logger.error(f"Error starting menu bar app: {e}")
+        return False
 
+def stop_menu_bar_app():
+    """Stop the menu bar application"""
+    if MENU_PID_FILE.exists():
+        try:
+            with open(MENU_PID_FILE, "r") as f:
+                pid = int(f.read().strip())
+            
+            os.kill(pid, signal.SIGTERM)
+            logger.info("Menu bar app stopped")
+            
+            # Wait a bit for it to clean up
+            time.sleep(0.5)
+            
+            # Clean up PID file
+            if MENU_PID_FILE.exists():
+                MENU_PID_FILE.unlink()
+                
+        except ProcessLookupError:
+            logger.warning("Menu bar app not running")
+            if MENU_PID_FILE.exists():
+                MENU_PID_FILE.unlink()
+        except Exception as e:
+            logger.error(f"Error stopping menu bar app: {e}")
 
 def edit_schedule():
     """Interactive schedule editor"""
@@ -298,9 +279,12 @@ def edit_schedule():
             CONFIG_FILE.unlink(missing_ok=True)
             print("Schedule reset to defaults")
 
-
 def stop_scheduler():
     """Stop running scheduler"""
+    # Stop the menu bar app first
+    stop_menu_bar_app()
+    
+    # Then stop the scheduler
     if PID_FILE.exists():
         with open(PID_FILE, "r") as f:
             pid = int(f.read().strip())
@@ -381,6 +365,11 @@ def main():
             logger.info("Starting Volume Scheduler in background...")
             logger.info(f"Logs: {CONFIG_DIR / 'scheduler.log'}")
             
+            # Start the menu bar app first (before daemonizing)
+            if MENU_SCRIPT.exists():
+                logger.info("Starting menu bar app...")
+                start_menu_bar_app()
+            
             # Fork to background
             daemonize()
             
@@ -394,30 +383,40 @@ def main():
         elif command == "edit":
             edit_schedule()
         
-        elif command == "browser":
-            start_web_server()
-        
         elif command == "status":
+            scheduler_running = False
+            menu_running = False
+            
             if PID_FILE.exists():
                 with open(PID_FILE, "r") as f:
                     pid = f.read().strip()
                 print(f"Scheduler is running (PID: {pid})")
+                scheduler_running = True
             else:
                 print("Scheduler is not running")
+            
+            if MENU_PID_FILE.exists():
+                with open(MENU_PID_FILE, "r") as f:
+                    pid = f.read().strip()
+                print(f"Menu bar app is running (PID: {pid})")
+                menu_running = True
+            else:
+                print("Menu bar app is not running")
+            
+            if not scheduler_running and not menu_running:
+                print("\nNo components are running")
         
         else:
             print("Unknown command")
-            print("Usage: volume_scheduler.py [start|stop|edit|browser|status]")
+            print("Usage: volume_scheduler.py [start|stop|edit|status]")
     
     else:
         print("macOS Volume Scheduler")
         print("\nUsage:")
-        print("  volume_scheduler.py start   - Start the scheduler")
-        print("  volume_scheduler.py stop    - Stop the scheduler")
+        print("  volume_scheduler.py start   - Start the scheduler and menu bar app")
+        print("  volume_scheduler.py stop    - Stop the scheduler and menu bar app")
         print("  volume_scheduler.py edit    - Edit schedule (CLI)")
-        print("  volume_scheduler.py browser - Edit schedule (Web UI)")
         print("  volume_scheduler.py status  - Check if running")
-
 
 if __name__ == "__main__":
     main()
