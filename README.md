@@ -1,6 +1,7 @@
 # Volume Scheduler
 
 chmod +x volume_scheduler.py
+
 chmod +x volume_scheduler_menu.py
 
 ## Start the scheduler (runs in background; not needed if added to launchctl)
