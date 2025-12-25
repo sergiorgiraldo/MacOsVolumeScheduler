@@ -71,9 +71,7 @@ launchctl load ~/Library/LaunchAgents/com.volumescheduler.plist
 
 ## configuration
 
-```bash
 schedule is stored in `~/.volume_scheduler/schedule.json`
-```
 
 ### default
 
