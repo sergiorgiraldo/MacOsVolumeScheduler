@@ -36,7 +36,9 @@ python volume_scheduler.py status
 
 Application has an icon in menubar, where you can edit visually the schedule
 
-## Create the plist file
+## Launch on startup
+
+### Create the plist file
 
 ```bash
 vi ~/Library/LaunchAgents/com.volumescheduler.plist
@@ -65,7 +67,7 @@ with this content, adjust paths
 </plist>
 ```
 
-### launch on startup
+### Register
 
 ```bash
 launchctl load ~/Library/LaunchAgents/com.volumescheduler.plist
