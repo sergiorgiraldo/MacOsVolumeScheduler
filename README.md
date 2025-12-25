@@ -1,24 +1,34 @@
 # Volume Scheduler
 
+```bash
 chmod +x volume_scheduler.py
 
 chmod +x volume_scheduler_menu.py
+```
 
 ## Start the scheduler (runs in background; not needed if added to launchctl)
 
+```bash
 python volume_scheduler.py start
+```
 
 ## Stop the scheduler
 
+```bash
 python volume_scheduler.py stop
+```
 
 ## Edit the schedule (terminal)
 
+```bash
 python volume_scheduler.py edit
+```
 
 ## Check if it's running
 
+```bash
 python volume_scheduler.py status
+```
 
 ## Menu
 
@@ -55,11 +65,15 @@ with this content, adjust paths
 
 ### launch on startup
 
+```bash
 launchctl load ~/Library/LaunchAgents/com.volumescheduler.plist
+```
 
 ## configuration
 
+```bash
 schedule is stored in `~/.volume_scheduler/schedule.json`
+```
 
 ### default
 
