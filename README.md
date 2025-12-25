@@ -6,25 +6,27 @@ chmod +x volume_scheduler.py
 chmod +x volume_scheduler_menu.py
 ```
 
-## Start the scheduler (runs in background; not needed if added to launchctl)
+## Commands
+
+### Start the scheduler (runs in background; not needed if added to launchctl)
 
 ```bash
 python volume_scheduler.py start
 ```
 
-## Stop the scheduler
+### Stop the scheduler
 
 ```bash
 python volume_scheduler.py stop
 ```
 
-## Edit the schedule (terminal)
+### Edit the schedule (terminal)
 
 ```bash
 python volume_scheduler.py edit
 ```
 
-## Check if it's running
+### Check if it's running
 
 ```bash
 python volume_scheduler.py status
