@@ -73,9 +73,11 @@ with this content, adjust paths
 launchctl load ~/Library/LaunchAgents/com.volumescheduler.plist
 ```
 
-## configuration
+## Configuration
 
-schedule is stored in `~/.volume_scheduler/schedule.json`
+- schedule is stored in `~/.volume_scheduler/schedule.json`
+- edit visually (menu)
+- edit in terminal (command above)
 
 ### default
 
