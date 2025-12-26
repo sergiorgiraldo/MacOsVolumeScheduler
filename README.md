@@ -88,3 +88,19 @@ if config does not exists or reset:
 ### sample
 
 `sample_schedule.json`
+
+## Unit testing
+
+``` bash
+python3 -m venv venv
+
+source venv/bin/activate
+
+pip install --upgrade pip
+pip install urllib3==2.0.7 requests==2.31.0
+pip install rumps pytest pytest-cov pytest-mock coverage
+
+python -m pytest -v
+
+deactivate
+```
