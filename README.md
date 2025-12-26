@@ -1,5 +1,15 @@
 # Volume Scheduler
 
+[Commands](#commands)
+
+[Launch on Startup](#startup)
+
+[Configuration](#configuration)
+
+[Unit Testing](#testing)
+
+---
+
 ```bash
 chmod +x volume_scheduler.py
 
@@ -36,7 +46,7 @@ python volume_scheduler.py status
 
 Application has an icon in menubar, where you can edit visually the schedule
 
-## Launch on startup
+## Startup
 
 ### Create the plist file
 
@@ -89,7 +99,7 @@ if config does not exists or reset:
 
 `sample_schedule.json`
 
-## Unit testing
+## Testing
 
 ``` bash
 python3 -m venv venv
