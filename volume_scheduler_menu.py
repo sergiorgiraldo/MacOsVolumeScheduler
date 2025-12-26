@@ -21,14 +21,16 @@ MENU_PID_FILE = CONFIG_DIR / "menu.pid"
 HTML_FILE = Path(__file__).parent / "volume_scheduler_ui.html"
 
 class ScheduleHandler(BaseHTTPRequestHandler):
-    """HTTP request handler for web interface"""
-    
+    """
+    HTTP request handler for web interface
+    """
     def log_message(self, format, *args):
-        """Suppress default logging"""
         pass
     
+    """
+    Handle GET requests
+    """
     def do_GET(self):
-        """Handle GET requests"""
         if self.path == "/" or self.path == "/index.html":
             self.send_response(200)
             self.send_header("Content-type", "text/html")
@@ -55,8 +57,10 @@ class ScheduleHandler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
     
+    """
+    Handle POST requests
+    """
     def do_POST(self):
-        """Handle POST requests"""
         if self.path == "/api/schedule":
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
@@ -102,14 +106,18 @@ class VolumeSchedulerMenu(rumps.App):
         # Write PID file
         self.write_pid_file()
     
+    """
+    Write PID file for this menu bar app
+    """
     def write_pid_file(self):
-        """Write PID file for this menu bar app"""
         CONFIG_DIR.mkdir(exist_ok=True)
         with open(MENU_PID_FILE, "w") as f:
             f.write(str(os.getpid()))
     
+    """
+    Get current macOS volume level
+    """
     def get_current_volume(self):
-        """Get current macOS volume level"""
         try:
             result = subprocess.run(
                 ["osascript", "-e", "output volume of (get volume settings)"],
@@ -121,25 +129,31 @@ class VolumeSchedulerMenu(rumps.App):
         except:
             return None
     
+    """
+    Update the current volume display
+    """
     @rumps.timer(300)  # Update every 5 minutes
     def update_current_volume(self, _=None):
-        """Update the current volume display"""
         volume = self.get_current_volume()
         if volume is not None:
             self.current_volume_item.title = f"Current Volume: {volume}%"
         else:
             self.current_volume_item.title = "Current Volume: --"
     
+    """
+    Start the web server in a background thread
+    """
     def start_web_server(self):
-        """Start the web server in a background thread"""
         if self.server is None:
             self.server = HTTPServer(('localhost', self.port), ScheduleHandler)
             self.server_thread = threading.Thread(target=self.server.serve_forever)
             self.server_thread.daemon = True
             self.server_thread.start()
     
+    """
+    Open the web UI for editing schedule
+    """
     def edit_schedule(self, _):
-        """Open the web UI for editing schedule"""
         if not HTML_FILE.exists():
             rumps.alert(
                 "Error",
@@ -153,8 +167,10 @@ class VolumeSchedulerMenu(rumps.App):
         # Open browser
         webbrowser.open(f'http://localhost:{self.port}')
     
+    """
+    Quit the application
+    """
     def quit_app(self, _):
-        """Quit the application"""
         # Stop web server if running
         if self.server:
             self.server.shutdown()
@@ -170,7 +186,6 @@ class VolumeSchedulerMenu(rumps.App):
         # The main scheduler script will handle that when stopped
         
         rumps.quit_application()
-
 
 if __name__ == "__main__":
     VolumeSchedulerMenu().run()

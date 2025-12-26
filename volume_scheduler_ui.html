@@ -11,13 +11,17 @@
             box-sizing: border-box;
         }
         
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        body{
+            font-family: Verdana, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             padding: 20px;
         }
         
+        button {
+            font-family: Verdana, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+
         .container {
             max-width: 1200px;
             margin: 0 auto;
@@ -317,29 +321,29 @@
         const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
         
         async function loadSchedule() {
-            const response = await fetch('/api/schedule');
+            const response = await fetch("/api/schedule");
             schedule = await response.json();
             renderSchedule();
         }
         
         function renderSchedule() {
-            const tbody = document.getElementById('scheduleBody');
-            tbody.innerHTML = '';
+            const tbody = document.getElementById("scheduleBody");
+            tbody.innerHTML = "";
             
             for (let hour = 0; hour < 24; hour++) {
-                const row = document.createElement('tr');
+                const row = document.createElement("tr");
                 
-                const hourCell = document.createElement('td');
-                hourCell.className = 'hour-label';
-                hourCell.textContent = `${hour.toString().padStart(2, '0')}:00`;
+                const hourCell = document.createElement("td");
+                hourCell.className = "hour-label";
+                hourCell.textContent = `${hour.toString().padStart(2, "0")}:00`;
                 row.appendChild(hourCell);
                 
                 days.forEach(day => {
-                    const cell = document.createElement('td');
+                    const cell = document.createElement("td");
                     const volume = schedule[day][hour.toString()];
                     
                     cell.innerHTML = `
-                        <div class="volume-cell" onclick="editCell('${day}', ${hour})">
+                        <div class="volume-cell" onclick="editCell("${day}", ${hour})">
                             <div class="volume-bar" style="height: ${volume}%"></div>
                             <div class="volume-label">${volume}%</div>
                         </div>
@@ -365,40 +369,40 @@
         
         async function saveSchedule() {
             try {
-                const response = await fetch('/api/schedule', {
-                    method: 'POST',
+                const response = await fetch("/api/schedule", {
+                    method: "POST",
                     headers: {
-                        'Content-Type': 'application/json',
+                        "Content-Type": "application/json",
                     },
                     body: JSON.stringify(schedule)
                 });
                 
                 if (response.ok) {
-                    showStatus('Schedule saved successfully! ✓');
+                    showStatus("Schedule saved successfully! ✓");
                 }
             } catch (error) {
-                showStatus('Error saving schedule: ' + error.message);
+                showStatus("Error saving schedule: " + error.message);
             }
         }
         
         function showStatus(message) {
-            const status = document.getElementById('status');
+            const status = document.getElementById("status");
             status.textContent = message;
-            status.classList.add('show');
-            setTimeout(() => status.classList.remove('show'), 3000);
+            status.classList.add("show");
+            setTimeout(() => status.classList.remove("show"), 3000);
         }
         
         function showBulkEdit() {
-            document.getElementById('bulkEditModal').classList.add('active');
+            document.getElementById("bulkEditModal").classList.add("active");
         }
         
         function closeBulkEdit() {
-            document.getElementById('bulkEditModal').classList.remove('active');
+            document.getElementById("bulkEditModal").classList.remove("active");
         }
         
         function applyBulkEdit() {
-            const day = document.getElementById('bulkDay').value;
-            const volume = parseInt(document.getElementById('bulkVolume').value);
+            const day = document.getElementById("bulkDay").value;
+            const volume = parseInt(document.getElementById("bulkVolume").value);
             
             for (let hour = 0; hour < 24; hour++) {
                 schedule[day][hour.toString()] = volume;
@@ -410,16 +414,16 @@
         }
         
         function copyDay() {
-            document.getElementById('copyDayModal').classList.add('active');
+            document.getElementById("copyDayModal").classList.add("active");
         }
         
         function closeCopyDay() {
-            document.getElementById('copyDayModal').classList.remove('active');
+            document.getElementById("copyDayModal").classList.remove("active");
         }
         
         function applyCopyDay() {
-            const fromDay = document.getElementById('copyFrom').value;
-            const toDay = document.getElementById('copyTo').value;
+            const fromDay = document.getElementById("copyFrom").value;
+            const toDay = document.getElementById("copyTo").value;
             
             schedule[toDay] = {...schedule[fromDay]};
             renderSchedule();
@@ -428,7 +432,7 @@
         }
         
         function resetSchedule() {
-            if (confirm('Reset schedule to defaults? This will set 30% volume for night hours (22:00-06:00) and 70% for day hours.')) {
+            if (confirm("Reset schedule to defaults? This will set 30% volume for night hours (22:00-06:00) and 70% for day hours.")) {
                 days.forEach(day => {
                     for (let hour = 0; hour < 24; hour++) {
                         if (hour >= 22 || hour < 6) {
@@ -439,7 +443,7 @@
                     }
                 });
                 renderSchedule();
-                showStatus('Schedule reset to defaults');
+                showStatus("Schedule reset to defaults");
             }
         }
         
