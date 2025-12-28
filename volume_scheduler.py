@@ -26,6 +26,8 @@ MENU_SCRIPT = Path(__file__).parent / "volume_scheduler_menu.py"
 """
 Setup logging to file
 """
+
+
 def setup_logging():
     CONFIG_DIR.mkdir(exist_ok=True)
 
@@ -47,6 +49,8 @@ logger = setup_logging()
 """
 Main class for scheduler
 """
+
+
 class VolumeScheduler:
     def __init__(self):
         self.schedule = self.load_schedule()
@@ -60,6 +64,7 @@ class VolumeScheduler:
     """
     Handle shutdown signals
     """
+
     def handle_signal(self, signum, frame):
         logger.info("Received shutdown signal")
         self.running = False
@@ -67,6 +72,7 @@ class VolumeScheduler:
     """
     Load schedule from config file
     """
+
     def load_schedule(self):
         if CONFIG_FILE.exists():
             with open(CONFIG_FILE, "r") as f:
@@ -90,6 +96,7 @@ class VolumeScheduler:
     """
     Save schedule to config file
     """
+
     def save_schedule(self, schedule):
         CONFIG_DIR.mkdir(exist_ok=True)
         with open(CONFIG_FILE, "w") as f:
@@ -98,6 +105,7 @@ class VolumeScheduler:
     """
     Set macOS system volume (0-100)
     """
+
     def set_volume(self, level):
         try:
             # AppleScript command to set volume
@@ -111,6 +119,7 @@ class VolumeScheduler:
     """
     Get the volume level for current day and hour
     """
+
     def get_current_schedule(self):
         now = datetime.now()
         day_name = now.strftime("%A")
@@ -123,6 +132,7 @@ class VolumeScheduler:
     """
     Check if volume needs to be updated
     """
+
     def check_and_update_volume(self):
         now = datetime.now()
         current_hour = now.hour
@@ -138,6 +148,7 @@ class VolumeScheduler:
     """
     Main loop - runs in background
     """
+
     def run(self):
         logger.info("Volume Scheduler started")
 
@@ -166,6 +177,7 @@ class VolumeScheduler:
                 pass
 
     """Stop the scheduler"""
+
     def stop(self):
         self.running = False
 
@@ -173,6 +185,8 @@ class VolumeScheduler:
 """
 Start the menu bar application
 """
+
+
 def start_menu_bar_app():
     if not MENU_SCRIPT.exists():
         logger.warning(f"Menu bar script not found at {MENU_SCRIPT}")
@@ -208,6 +222,8 @@ def start_menu_bar_app():
 """
 Stop the menu bar application
 """
+
+
 def stop_menu_bar_app():
     if MENU_PID_FILE.exists():
         try:
@@ -235,10 +251,12 @@ def stop_menu_bar_app():
 """
 Interactive schedule editor
 """
+
+
 def edit_schedule():
     scheduler = VolumeScheduler()
-    days = ["Monday", "Tuesday", "Wednesday",
-            "Thursday", "Friday", "Saturday", "Sunday"]
+    days = ["Sunday", "Monday", "Tuesday", "Wednesday",
+            "Thursday", "Friday", "Saturday"]
 
     print("\n=== Volume Scheduler Configuration ===\n")
     print("Choose an option:")
@@ -314,6 +332,8 @@ def edit_schedule():
 """
 Stop running scheduler
 """
+
+
 def stop_scheduler():
     # Stop the menu bar app first
     stop_menu_bar_app()
@@ -348,6 +368,8 @@ def stop_scheduler():
 """
 Run the process as a daemon in the background
 """
+
+
 def daemonize():
     try:
         pid = os.fork()
@@ -376,6 +398,8 @@ def daemonize():
 """
 Check if a process with given PID is running.
 """
+
+
 def is_process_running(pid):
     try:
         # Send signal 0 - doesn't actually send a signal, just checks if process exists
@@ -394,6 +418,8 @@ def is_process_running(pid):
 """
 Entry method
 """
+
+
 def main():
     if len(sys.argv) > 1:
         command = sys.argv[1]
