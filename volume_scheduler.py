@@ -2,6 +2,7 @@
 """
 macOS Volume Scheduler
 A background app that automatically adjusts system volume based on day and hour
+Now with multiple profile support
 """
 
 import os
@@ -28,7 +29,7 @@ Setup logging to file
 """
 
 
-def setup_logging():
+def SetupLogging():
     CONFIG_DIR.mkdir(exist_ok=True)
 
     # Configure logging
@@ -44,7 +45,7 @@ def setup_logging():
     return logging.getLogger(__name__)
 
 
-logger = setup_logging()
+logger = SetupLogging()
 
 """
 Main class for scheduler
@@ -53,60 +54,127 @@ Main class for scheduler
 
 class VolumeScheduler:
     def __init__(self):
-        self.schedule = self.load_schedule()
+        self.config = self.LoadConfig()
         self.running = True
         self.last_hour = None
 
         # Setup signal handlers for clean shutdown
-        signal.signal(signal.SIGTERM, self.handle_signal)
-        signal.signal(signal.SIGINT, self.handle_signal)
+        signal.signal(signal.SIGTERM, self.HandleSignal)
+        signal.signal(signal.SIGINT, self.HandleSignal)
 
     """
     Handle shutdown signals
     """
 
-    def handle_signal(self, signum, frame):
+    def HandleSignal(self, signum, frame):
         logger.info("Received shutdown signal")
         self.running = False
 
     """
-    Load schedule from config file
+    Create default schedule for a profile
     """
 
-    def load_schedule(self):
+    def CreateDefaultSchedule(self):
+        schedule = {}
+        days = ["Monday", "Tuesday", "Wednesday",
+                "Thursday", "Friday", "Saturday", "Sunday"]
+        for day in days:
+            schedule[day] = {}
+            for hour in range(24):
+                # Default: 30% volume at night (22-6), 70% during day
+                if hour >= 22 or hour < 6:
+                    schedule[day][str(hour)] = 30
+                else:
+                    schedule[day][str(hour)] = 70
+        return schedule
+
+    """
+    Load config with profiles from config file
+    """
+
+    def LoadConfig(self):
         if CONFIG_FILE.exists():
             with open(CONFIG_FILE, "r") as f:
-                return json.load(f)
+                config = json.load(f)
+                
+                # Migrate old format to new format if needed
+                if "profiles" not in config:
+                    logger.info("Migrating old config format to profiles")
+                    old_schedule = config
+                    config = {
+                        "profiles": {
+                            "Default": {
+                                "name": "Default",
+                                "isActive": True,
+                                "schedule": old_schedule
+                            }
+                        }
+                    }
+                    self.SaveConfig(config)
+                
+                return config
         else:
-            # Create default schedule
-            schedule = {}
-            days = ["Monday", "Tuesday", "Wednesday",
-                    "Thursday", "Friday", "Saturday", "Sunday"]
-            for day in days:
-                schedule[day] = {}
-                for hour in range(24):
-                    # Default: 30% volume at night (22-6), 70% during day
-                    if hour >= 22 or hour < 6:
-                        schedule[day][str(hour)] = 30
-                    else:
-                        schedule[day][str(hour)] = 70
-            self.save_schedule(schedule)
-            return schedule
+            # Create default config with one profile
+            config = {
+                "profiles": {
+                    "Default": {
+                        "name": "Default",
+                        "isActive": True,
+                        "schedule": self.CreateDefaultSchedule()
+                    }
+                }
+            }
+            self.SaveConfig(config)
+            return config
 
     """
-    Save schedule to config file
+    Save config to file
     """
 
-    def save_schedule(self, schedule):
+    def SaveConfig(self, config):
         CONFIG_DIR.mkdir(exist_ok=True)
         with open(CONFIG_FILE, "w") as f:
-            json.dump(schedule, f, indent=2)
+            json.dump(config, f, indent=2)
+
+    """
+    Get the active profile
+    """
+
+    def GetActiveProfile(self):
+        for profile_name, profile_data in self.config["profiles"].items():
+            if profile_data.get("isActive", False):
+                return profile_name, profile_data
+        
+        # If no active profile, activate the first one
+        first_profile = next(iter(self.config["profiles"].items()))
+        first_profile[1]["isActive"] = True
+        self.SaveConfig(self.config)
+        return first_profile
+
+    """
+    Set a profile as active
+    """
+
+    def SetActiveProfile(self, profile_name):
+        if profile_name not in self.config["profiles"]:
+            logger.error(f"Profile '{profile_name}' not found")
+            return False
+        
+        # Deactivate all profiles
+        for name, data in self.config["profiles"].items():
+            data["isActive"] = False
+        
+        # Activate the selected profile
+        self.config["profiles"][profile_name]["isActive"] = True
+        self.SaveConfig(self.config)
+        logger.info(f"Switched to profile: {profile_name}")
+        return True
 
     """
     Set macOS system volume (0-100)
     """
 
-    def set_volume(self, level):
+    def SetVolume(self, level):
         try:
             # AppleScript command to set volume
             script = f"set volume output volume {level}"
@@ -120,28 +188,31 @@ class VolumeScheduler:
     Get the volume level for current day and hour
     """
 
-    def get_current_schedule(self):
+    def GetCurrentSchedule(self):
         now = datetime.now()
         day_name = now.strftime("%A")
         hour = str(now.hour)
 
-        if day_name in self.schedule and hour in self.schedule[day_name]:
-            return self.schedule[day_name][hour]
+        profile_name, profile_data = self.GetActiveProfile()
+        schedule = profile_data["schedule"]
+
+        if day_name in schedule and hour in schedule[day_name]:
+            return schedule[day_name][hour]
         return None
 
     """
     Check if volume needs to be updated
     """
 
-    def check_and_update_volume(self):
+    def CheckAndUpdateVolume(self):
         now = datetime.now()
         current_hour = now.hour
 
         # Only update at the start of a new hour
         if current_hour != self.last_hour:
-            volume = self.get_current_schedule()
+            volume = self.GetCurrentSchedule()
             if volume is not None:
-                if self.set_volume(volume):
+                if self.SetVolume(volume):
                     # Only log volume changes, not every check
                     self.last_hour = current_hour
 
@@ -149,7 +220,7 @@ class VolumeScheduler:
     Main loop - runs in background
     """
 
-    def run(self):
+    def Run(self):
         logger.info("Volume Scheduler started")
 
         # Write PID file
@@ -159,10 +230,10 @@ class VolumeScheduler:
 
         try:
             # Set initial volume
-            self.check_and_update_volume()
+            self.CheckAndUpdateVolume()
 
             while self.running:
-                self.check_and_update_volume()
+                self.CheckAndUpdateVolume()
                 time.sleep(300)  # Check every 5 minutes
 
         except (KeyboardInterrupt, SystemExit):
@@ -178,7 +249,7 @@ class VolumeScheduler:
 
     """Stop the scheduler"""
 
-    def stop(self):
+    def Stop(self):
         self.running = False
 
 
@@ -187,7 +258,7 @@ Start the menu bar application
 """
 
 
-def start_menu_bar_app():
+def StartMenubarApp():
     if not MENU_SCRIPT.exists():
         logger.warning(f"Menu bar script not found at {MENU_SCRIPT}")
         return False
@@ -224,7 +295,7 @@ Stop the menu bar application
 """
 
 
-def stop_menu_bar_app():
+def StopMenubarApp():
     if MENU_PID_FILE.exists():
         try:
             with open(MENU_PID_FILE, "r") as f:
@@ -253,12 +324,32 @@ Interactive schedule editor
 """
 
 
-def edit_schedule():
+def EditSchedule():
     scheduler = VolumeScheduler()
     days = ["Sunday", "Monday", "Tuesday", "Wednesday",
             "Thursday", "Friday", "Saturday"]
 
-    print("\n=== Volume Scheduler Configuration ===\n")
+    # Select profile to edit
+    print("\n=== Available Profiles ===")
+    profiles = list(scheduler.config["profiles"].keys())
+    for i, profile_name in enumerate(profiles, 1):
+        active = " (ACTIVE)" if scheduler.config["profiles"][profile_name].get("isActive", False) else ""
+        print(f"{i}. {profile_name}{active}")
+    
+    try:
+        profile_choice = int(input("\nSelect profile to edit (1-{}): ".format(len(profiles)))) - 1
+        if profile_choice < 0 or profile_choice >= len(profiles):
+            print("Invalid selection")
+            return
+        
+        selected_profile = profiles[profile_choice]
+        profile_data = scheduler.config["profiles"][selected_profile]
+        schedule = profile_data["schedule"]
+    except (ValueError, IndexError):
+        print("Invalid selection")
+        return
+
+    print(f"\n=== Editing Profile: {selected_profile} ===\n")
     print("Choose an option:")
     print("1. View current schedule")
     print("2. Edit schedule for a specific day")
@@ -274,7 +365,7 @@ def edit_schedule():
         for day in days:
             print(f"\n{day}:")
             for hour in range(24):
-                vol = scheduler.schedule[day][str(hour)]
+                vol = schedule[day][str(hour)]
                 print(f"  {hour:02d}:00 - {vol}%", end="")
                 if (hour + 1) % 4 == 0:
                     print()
@@ -292,8 +383,8 @@ def edit_schedule():
         hour = int(input("Enter hour (0-23): "))
         volume = int(input("Enter volume level (0-100): "))
 
-        scheduler.schedule[day][str(hour)] = volume
-        scheduler.save_schedule(scheduler.schedule)
+        schedule[day][str(hour)] = volume
+        scheduler.SaveConfig(scheduler.config)
         print(f"Set {day} at {hour}:00 to {volume}%")
 
     elif choice == "3":
@@ -306,8 +397,8 @@ def edit_schedule():
         volume = int(input("Enter volume level for all hours (0-100): "))
 
         for hour in range(24):
-            scheduler.schedule[day][str(hour)] = volume
-        scheduler.save_schedule(scheduler.schedule)
+            schedule[day][str(hour)] = volume
+        scheduler.SaveConfig(scheduler.config)
         print(f"Set all hours for {day} to {volume}%")
 
     elif choice == "4":
@@ -318,15 +409,149 @@ def edit_schedule():
         from_day = days[int(input("Select source day (1-7): ")) - 1]
         to_day = days[int(input("Select destination day (1-7): ")) - 1]
 
-        scheduler.schedule[to_day] = scheduler.schedule[from_day].copy()
-        scheduler.save_schedule(scheduler.schedule)
+        schedule[to_day] = schedule[from_day].copy()
+        scheduler.SaveConfig(scheduler.config)
         print(f"Copied schedule from {from_day} to {to_day}")
 
     elif choice == "5":
         # Reset
         if input("Reset to defaults? (yes/no): ").lower() == "yes":
-            CONFIG_FILE.unlink(missing_ok=True)
+            profile_data["schedule"] = scheduler.CreateDefaultSchedule()
+            scheduler.SaveConfig(scheduler.config)
             print("Schedule reset to defaults")
+
+
+"""
+Manage profiles
+"""
+
+
+def ManageProfiles(profile_name=None):
+    scheduler = VolumeScheduler()
+    
+    if profile_name:
+        # Switch to specified profile
+        if scheduler.SetActiveProfile(profile_name):
+            print(f"Switched to profile: {profile_name}")
+            
+            # Signal the scheduler to reload if it's running
+            if PID_FILE.exists():
+                try:
+                    with open(PID_FILE, "r") as f:
+                        pid = int(f.read().strip())
+                    os.kill(pid, signal.SIGHUP)
+                except:
+                    pass
+        else:
+            print(f"Error: Profile '{profile_name}' not found")
+            print("\nAvailable profiles:")
+            for name in scheduler.config["profiles"].keys():
+                active = " (ACTIVE)" if scheduler.config["profiles"][name].get("isActive", False) else ""
+                print(f"  - {name}{active}")
+    else:
+        # Interactive profile management
+        print("\n=== Profile Management ===\n")
+        print("1. List all profiles")
+        print("2. Switch active profile")
+        print("3. Create new profile")
+        print("4. Delete profile")
+        print("5. Rename profile")
+        print("6. Exit")
+        
+        choice = input("\nEnter choice (1-6): ").strip()
+        
+        if choice == "1":
+            # List profiles
+            print("\nProfiles:")
+            for name, data in scheduler.config["profiles"].items():
+                active = " (ACTIVE)" if data.get("isActive", False) else ""
+                print(f"  - {name}{active}")
+        
+        elif choice == "2":
+            # Switch profile
+            profiles = list(scheduler.config["profiles"].keys())
+            print("\nAvailable profiles:")
+            for i, name in enumerate(profiles, 1):
+                active = " (ACTIVE)" if scheduler.config["profiles"][name].get("isActive", False) else ""
+                print(f"{i}. {name}{active}")
+            
+            try:
+                profile_choice = int(input("\nSelect profile (1-{}): ".format(len(profiles)))) - 1
+                selected_profile = profiles[profile_choice]
+                scheduler.SetActiveProfile(selected_profile)
+                print(f"Switched to profile: {selected_profile}")
+            except (ValueError, IndexError):
+                print("Invalid selection")
+        
+        elif choice == "3":
+            # Create new profile
+            new_name = input("\nEnter new profile name: ").strip()
+            if new_name in scheduler.config["profiles"]:
+                print(f"Profile '{new_name}' already exists")
+            elif new_name:
+                scheduler.config["profiles"][new_name] = {
+                    "name": new_name,
+                    "isActive": False,
+                    "schedule": scheduler.CreateDefaultSchedule()
+                }
+                scheduler.SaveConfig(scheduler.config)
+                print(f"Created profile: {new_name}")
+            else:
+                print("Invalid profile name")
+        
+        elif choice == "4":
+            # Delete profile
+            if len(scheduler.config["profiles"]) == 1:
+                print("Cannot delete the last profile")
+                return
+            
+            profiles = list(scheduler.config["profiles"].keys())
+            print("\nProfiles:")
+            for i, name in enumerate(profiles, 1):
+                active = " (ACTIVE)" if scheduler.config["profiles"][name].get("isActive", False) else ""
+                print(f"{i}. {name}{active}")
+            
+            try:
+                profile_choice = int(input("\nSelect profile to delete (1-{}): ".format(len(profiles)))) - 1
+                selected_profile = profiles[profile_choice]
+                
+                if input(f"Delete profile '{selected_profile}'? (yes/no): ").lower() == "yes":
+                    was_active = scheduler.config["profiles"][selected_profile].get("isActive", False)
+                    del scheduler.config["profiles"][selected_profile]
+                    
+                    # If we deleted the active profile, activate another one
+                    if was_active:
+                        first_profile = next(iter(scheduler.config["profiles"].keys()))
+                        scheduler.config["profiles"][first_profile]["isActive"] = True
+                    
+                    scheduler.SaveConfig(scheduler.config)
+                    print(f"Deleted profile: {selected_profile}")
+            except (ValueError, IndexError):
+                print("Invalid selection")
+        
+        elif choice == "5":
+            # Rename profile
+            profiles = list(scheduler.config["profiles"].keys())
+            print("\nProfiles:")
+            for i, name in enumerate(profiles, 1):
+                print(f"{i}. {name}")
+            
+            try:
+                profile_choice = int(input("\nSelect profile to rename (1-{}): ".format(len(profiles)))) - 1
+                old_name = profiles[profile_choice]
+                new_name = input(f"Enter new name for '{old_name}': ").strip()
+                
+                if new_name and new_name not in scheduler.config["profiles"]:
+                    profile_data = scheduler.config["profiles"][old_name]
+                    profile_data["name"] = new_name
+                    scheduler.config["profiles"][new_name] = profile_data
+                    del scheduler.config["profiles"][old_name]
+                    scheduler.SaveConfig(scheduler.config)
+                    print(f"Renamed profile from '{old_name}' to '{new_name}'")
+                else:
+                    print("Invalid name or profile already exists")
+            except (ValueError, IndexError):
+                print("Invalid selection")
 
 
 """
@@ -334,9 +559,9 @@ Stop running scheduler
 """
 
 
-def stop_scheduler():
+def StopScheduler():
     # Stop the menu bar app first
-    stop_menu_bar_app()
+    StopMenubarApp()
 
     # Then stop the scheduler
     if PID_FILE.exists():
@@ -370,7 +595,7 @@ Run the process as a daemon in the background
 """
 
 
-def daemonize():
+def Daemonize():
     try:
         pid = os.fork()
         if pid > 0:
@@ -400,7 +625,7 @@ Check if a process with given PID is running.
 """
 
 
-def is_process_running(pid):
+def IsProcessRunning(pid):
     try:
         # Send signal 0 - doesn't actually send a signal, just checks if process exists
         os.kill(pid, 0)
@@ -428,7 +653,7 @@ def main():
             if PID_FILE.exists():
                 with open(PID_FILE, "r") as f:
                     pid = int(f.read().strip())
-                if is_process_running(pid):
+                if IsProcessRunning(pid):
                     print(f"Scheduler already running (PID: {pid})")
                     return
 
@@ -438,20 +663,27 @@ def main():
             # Start the menu bar app first (before daemonizing)
             if MENU_SCRIPT.exists():
                 logger.info("Starting menu bar app...")
-                start_menu_bar_app()
+                StartMenubarApp()
 
             # Fork to background
-            daemonize()
+            Daemonize()
 
             # Now running as daemon
             scheduler = VolumeScheduler()
-            scheduler.run()
+            scheduler.Run()
 
         elif command == "stop":
-            stop_scheduler()
+            StopScheduler()
 
         elif command == "edit":
-            edit_schedule()
+            EditSchedule()
+
+        elif command == "profile":
+            # Check if profile name was provided
+            if len(sys.argv) > 2:
+                ManageProfiles(sys.argv[2])
+            else:
+                ManageProfiles()
 
         elif command == "status":
             scheduler_running = False
@@ -462,6 +694,14 @@ def main():
                     pid = f.read().strip()
                 print(f"Scheduler is running (PID: {pid})")
                 scheduler_running = True
+                
+                # Show active profile
+                try:
+                    scheduler = VolumeScheduler()
+                    profile_name, _ = scheduler.GetActiveProfile()
+                    print(f"Active profile: {profile_name}")
+                except:
+                    pass
             else:
                 print("Scheduler is not running")
 
@@ -478,15 +718,17 @@ def main():
 
         else:
             print("Unknown command")
-            print("Usage: volume_scheduler.py [start|stop|edit|status]")
+            print("Usage: volume_scheduler.py [start|stop|edit|profile|status]")
 
     else:
         print("macOS Volume Scheduler")
         print("\nUsage:")
-        print("  volume_scheduler.py start   - Start the scheduler and menu bar app")
-        print("  volume_scheduler.py stop    - Stop the scheduler and menu bar app")
-        print("  volume_scheduler.py edit    - Edit schedule (CLI)")
-        print("  volume_scheduler.py status  - Check if running")
+        print("  volume_scheduler.py start              - Start the scheduler and menu bar app")
+        print("  volume_scheduler.py stop               - Stop the scheduler and menu bar app")
+        print("  volume_scheduler.py edit               - Edit schedule (CLI)")
+        print("  volume_scheduler.py profile            - Manage profiles (interactive)")
+        print("  volume_scheduler.py profile <name>     - Switch to specific profile")
+        print("  volume_scheduler.py status             - Check if running")
 
 
 if __name__ == "__main__":

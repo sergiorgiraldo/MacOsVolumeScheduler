@@ -2,6 +2,7 @@
 """
 macOS Volume Scheduler - Menu Bar App
 Adds a menu bar icon with volume control interface
+Now with profile support
 """
 
 import rumps
@@ -46,17 +47,17 @@ class ScheduleHandler(BaseHTTPRequestHandler):
                 self.wfile.write(
                     b"<h1>Error: scheduler_ui.html not found</h1>")
 
-        elif self.path == "/api/schedule":
+        elif self.path == "/api/config":
             self.send_response(200)
             self.send_header("Content-type", "application/json")
             self.end_headers()
 
             if CONFIG_FILE.exists():
                 with open(CONFIG_FILE, "r") as f:
-                    schedule = json.load(f)
-                self.wfile.write(json.dumps(schedule).encode())
+                    config = json.load(f)
+                self.wfile.write(json.dumps(config).encode())
             else:
-                self.wfile.write(json.dumps({}).encode())
+                self.wfile.write(json.dumps({"profiles": {}}).encode())
         else:
             self.send_response(404)
             self.end_headers()
@@ -66,14 +67,14 @@ class ScheduleHandler(BaseHTTPRequestHandler):
     """
 
     def do_POST(self):
-        if self.path == "/api/schedule":
+        if self.path == "/api/config":
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
-            schedule = json.loads(post_data.decode())
+            config = json.loads(post_data.decode())
 
             CONFIG_DIR.mkdir(exist_ok=True)
             with open(CONFIG_FILE, "w") as f:
-                json.dump(schedule, f, indent=2)
+                json.dump(config, f, indent=2)
 
             self.send_response(200)
             self.send_header("Content-type", "application/json")
@@ -88,8 +89,8 @@ class VolumeSchedulerMenu(rumps.App):
     def __init__(self):
         super(VolumeSchedulerMenu, self).__init__(
             "Volume Scheduler",
-            icon="/Users/GK47LX/source/MacOsVolumeScheduler/icon.svg",  # Speaker emoji as icon
-            quit_button=None  # We'll add our own quit button
+            icon="/Users/GK47LX/source/MacOsVolumeScheduler/icon.svg",
+            quit_button=None
         )
 
         self.server = None
@@ -98,25 +99,29 @@ class VolumeSchedulerMenu(rumps.App):
 
         # Menu items
         self.current_volume_item = rumps.MenuItem("Current Volume: --")
+        self.current_profile_item = rumps.MenuItem("Profile: --")
+        
         self.menu = [
             self.current_volume_item,
+            self.current_profile_item,
             None,  # Separator
-            rumps.MenuItem("Edit Schedule", callback=self.edit_schedule),
+            rumps.MenuItem("Edit Schedule", callback=self.EditSchedule),
             None,  # Separator
-            rumps.MenuItem("Quit", callback=self.quit_app)
+            rumps.MenuItem("Quit", callback=self.QuitApp)
         ]
 
-        # Update current volume
-        self.update_current_volume()
+        # Update current volume and profile
+        self.UpdateCurrentVolume()
+        self.UpdateCurrentProfile()
 
         # Write PID file
-        self.write_pid_file()
+        self.WritePIDFile()
 
     """
     Write PID file for this menu bar app
     """
 
-    def write_pid_file(self):
+    def WritePIDFile(self):
         CONFIG_DIR.mkdir(exist_ok=True)
         with open(MENU_PID_FILE, "w") as f:
             f.write(str(os.getpid()))
@@ -125,7 +130,7 @@ class VolumeSchedulerMenu(rumps.App):
     Get current macOS volume level
     """
 
-    def get_current_volume(self):
+    def GetCurrentVolume(self):
         try:
             result = subprocess.run(
                 ["osascript", "-e", "output volume of (get volume settings)"],
@@ -138,19 +143,48 @@ class VolumeSchedulerMenu(rumps.App):
             return None
 
     """
+    Get current active profile name
+    """
+
+    def GetActiveProfile(self):
+        try:
+            if CONFIG_FILE.exists():
+                with open(CONFIG_FILE, "r") as f:
+                    config = json.load(f)
+                    
+                    # Handle old format
+                    if "profiles" not in config:
+                        return "Default"
+                    
+                    for profile_name, profile_data in config["profiles"].items():
+                        if profile_data.get("isActive", False):
+                            return profile_name
+            return "None"
+        except:
+            return "Error"
+
+    """
     Update the current volume display
     """
     @rumps.timer(300)  # Update every 5 minutes
-    def update_current_volume(self, _=None):
-        volume = self.get_current_volume()
+    def UpdateCurrentVolume(self, _=None):
+        volume = self.GetCurrentVolume()
         self.current_volume_item.title = "Current Volume: " + \
             f"{volume}%" if volume is not None else "--"
+
+    """
+    Update the current profile display
+    """
+    @rumps.timer(60)  # Update every minute
+    def UpdateCurrentProfile(self, _=None):
+        profile = self.GetActiveProfile()
+        self.current_profile_item.title = f"Profile: {profile}"
 
     """
     Start the web server in a background thread
     """
 
-    def start_web_server(self):
+    def StartWebServer(self):
         if self.server is None:
             self.server = HTTPServer(('localhost', self.port), ScheduleHandler)
             self.server_thread = threading.Thread(
@@ -162,7 +196,7 @@ class VolumeSchedulerMenu(rumps.App):
     Open the web UI for editing schedule
     """
 
-    def edit_schedule(self, _):
+    def EditSchedule(self, _):
         if not HTML_FILE.exists():
             rumps.alert(
                 "Error",
@@ -171,7 +205,7 @@ class VolumeSchedulerMenu(rumps.App):
             return
 
         # Start server if not already running
-        self.start_web_server()
+        self.StartWebServer()
 
         # Open browser
         webbrowser.open(f'http://localhost:{self.port}')
@@ -180,7 +214,7 @@ class VolumeSchedulerMenu(rumps.App):
     Quit the application
     """
 
-    def quit_app(self, _):
+    def QuitApp(self, _):
         # Stop web server if running
         if self.server:
             self.server.shutdown()
@@ -191,9 +225,6 @@ class VolumeSchedulerMenu(rumps.App):
                 MENU_PID_FILE.unlink()
         except Exception:
             pass
-
-        # Note: We don't stop the scheduler daemon here anymore
-        # The main scheduler script will handle that when stopped
 
         rumps.quit_application()
 

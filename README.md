@@ -42,9 +42,23 @@ python volume_scheduler.py edit
 python volume_scheduler.py status
 ```
 
+### Manage profiles
+
+```bash
+python volume_scheduler.py profile
+```
+
+### Set active profile
+
+```bash
+python volume_scheduler.py profile {profile_name}
+```
+
 ## Menu
 
-Application has an icon in menubar, where you can edit visually the schedule
+Application has an icon in menubar, from which you can edit visually the schedule.
+
+Menu also shows current volume and current profile.
 
 ## Startup
 

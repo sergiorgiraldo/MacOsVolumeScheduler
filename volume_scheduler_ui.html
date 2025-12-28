@@ -39,8 +39,29 @@
         
         .subtitle {
             color: #666;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
             font-size: 14px;
+        }
+        
+        .profile-selector {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        
+        .profile-selector label {
+            font-weight: 600;
+            color: #333;
+            margin: 0;
+        }
+        
+        .profile-selector select {
+            flex: 1;
+            max-width: 300px;
         }
         
         .controls {
@@ -75,6 +96,22 @@
         
         button.secondary:hover {
             background: #e0e0e0;
+        }
+        
+        button.danger {
+            background: #dc3545;
+        }
+        
+        button.danger:hover {
+            background: #c82333;
+        }
+        
+        button.success {
+            background: #28a745;
+        }
+        
+        button.success:hover {
+            background: #218838;
         }
         
         .schedule-grid {
@@ -162,6 +199,12 @@
             display: block;
         }
         
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
         .modal {
             display: none;
             position: fixed;
@@ -203,7 +246,7 @@
             color: #555;
         }
         
-        select, input[type="number"] {
+        select, input[type="number"], input[type="text"] {
             width: 100%;
             padding: 8px;
             border: 1px solid #ddd;
@@ -225,7 +268,15 @@
 <body>
     <div class="container">
         <h1>Volume Scheduler</h1>
-        <p class="subtitle">Click on any cell to adjust the volume for that hour</p>
+        <p class="subtitle">Manage multiple volume schedules with profiles</p>
+
+        <div class="profile-selector">
+            <label>Current Profile:</label>
+            <select id="profileSelect" onchange="switchProfile()"></select>
+            <button type="button" onclick="showNewProfile()" class="success">New Profile</button>
+            <button type="button" onclick="showRenameProfile()" class="secondary">Rename</button>
+            <button type="button" onclick="deleteProfile()" class="danger">Delete</button>
+        </div>
 
         <div class="controls">
             <button type="button" onclick="saveSchedule()">Save Changes</button>
@@ -254,6 +305,40 @@
         </div>
 
         <div id="status" class="status"></div>
+    </div>
+
+    <div id="newProfileModal" class="modal">
+        <div class="modal-content">
+            <h2>Create New Profile</h2>
+            <div class="form-group">
+                <label>Profile Name:</label>
+                <input type="text" id="newProfileName" placeholder="e.g., Work, Weekend, Quiet">
+            </div>
+            <div class="form-group">
+                <label>Copy schedule from:</label>
+                <select id="copyFromProfile">
+                    <option value="">Default schedule</option>
+                </select>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" onclick="createNewProfile()">Create</button>
+                <button type="button" onclick="closeNewProfile()" class="secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="renameProfileModal" class="modal">
+        <div class="modal-content">
+            <h2>Rename Profile</h2>
+            <div class="form-group">
+                <label>New Name:</label>
+                <input type="text" id="renameProfileName">
+            </div>
+            <div class="modal-buttons">
+                <button type="button" onclick="applyRenameProfile()">Rename</button>
+                <button type="button" onclick="closeRenameProfile()" class="secondary">Cancel</button>
+            </div>
+        </div>
     </div>
 
     <div id="bulkEditModal" class="modal">
@@ -317,16 +402,85 @@
     </div>
 
     <script>
-        let schedule = {};
+        let config = { profiles: {} };
+        let currentProfile = null;
         const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
         
-        async function loadSchedule() {
-            const response = await fetch("/api/schedule");
-            schedule = await response.json();
+        async function loadConfig() {
+            const response = await fetch("/api/config");
+            config = await response.json();
+            
+            // Ensure config has profiles structure
+            if (!config.profiles) {
+                config.profiles = {};
+            }
+            
+            // Find active profile or use first one
+            currentProfile = null;
+            for (const [name, data] of Object.entries(config.profiles)) {
+                if (data.isActive) {
+                    currentProfile = name;
+                    break;
+                }
+            }
+            
+            if (!currentProfile && Object.keys(config.profiles).length > 0) {
+                currentProfile = Object.keys(config.profiles)[0];
+                config.profiles[currentProfile].isActive = true;
+            }
+            
+            updateProfileSelector();
             renderSchedule();
         }
         
+        function updateProfileSelector() {
+            const select = document.getElementById("profileSelect");
+            select.innerHTML = "";
+            
+            for (const profileName of Object.keys(config.profiles)) {
+                const option = document.createElement("option");
+                option.value = profileName;
+                option.textContent = profileName;
+                option.selected = profileName === currentProfile;
+                select.appendChild(option);
+            }
+            
+            // Update copy from profile options
+            const copySelect = document.getElementById("copyFromProfile");
+            copySelect.innerHTML = '<option value="">Default schedule</option>';
+            for (const profileName of Object.keys(config.profiles)) {
+                const option = document.createElement("option");
+                option.value = profileName;
+                option.textContent = profileName;
+                copySelect.appendChild(option);
+            }
+        }
+        
+        function switchProfile() {
+            const select = document.getElementById("profileSelect");
+            const newProfile = select.value;
+            
+            if (newProfile !== currentProfile) {
+                // Deactivate all profiles
+                for (const name in config.profiles) {
+                    config.profiles[name].isActive = false;
+                }
+                
+                // Activate selected profile
+                config.profiles[newProfile].isActive = true;
+                currentProfile = newProfile;
+                
+                renderSchedule();
+                saveSchedule();
+            }
+        }
+        
         function renderSchedule() {
+            if (!currentProfile || !config.profiles[currentProfile]) {
+                return;
+            }
+            
+            const schedule = config.profiles[currentProfile].schedule;
             const tbody = document.getElementById("scheduleBody");
             tbody.innerHTML = "";
             
@@ -343,7 +497,7 @@
                     const volume = schedule[day][hour.toString()];
                     
                     cell.innerHTML = `
-                        <div class="volume-cell" onclick="editCell("${day}", ${hour})">
+                        <div class="volume-cell" onclick="editCell('${day}', ${hour})">
                             <div class="volume-bar" style="height: ${volume}%"></div>
                             <div class="volume-label">${volume}%</div>
                         </div>
@@ -357,6 +511,7 @@
         }
         
         function editCell(day, hour) {
+            const schedule = config.profiles[currentProfile].schedule;
             const currentVolume = schedule[day][hour.toString()];
             const newVolume = prompt(`Set volume for ${day} at ${hour}:00\n(0-100)`, currentVolume);
             
@@ -369,27 +524,167 @@
         
         async function saveSchedule() {
             try {
-                const response = await fetch("/api/schedule", {
+                const response = await fetch("/api/config", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
                     },
-                    body: JSON.stringify(schedule)
+                    body: JSON.stringify(config)
                 });
                 
                 if (response.ok) {
                     showStatus("Schedule saved successfully! ✓");
                 }
             } catch (error) {
-                showStatus("Error saving schedule: " + error.message);
+                showStatus("Error saving schedule: " + error.message, true);
             }
         }
         
-        function showStatus(message) {
+        function showStatus(message, isError = false) {
             const status = document.getElementById("status");
             status.textContent = message;
             status.classList.add("show");
+            if (isError) {
+                status.classList.add("error");
+            } else {
+                status.classList.remove("error");
+            }
             setTimeout(() => status.classList.remove("show"), 3000);
+        }
+        
+        function showNewProfile() {
+            document.getElementById("newProfileModal").classList.add("active");
+            document.getElementById("newProfileName").value = "";
+        }
+        
+        function closeNewProfile() {
+            document.getElementById("newProfileModal").classList.remove("active");
+        }
+        
+        function createDefaultSchedule() {
+            const schedule = {};
+            days.forEach(day => {
+                schedule[day] = {};
+                for (let hour = 0; hour < 24; hour++) {
+                    if (hour >= 22 || hour < 6) {
+                        schedule[day][hour.toString()] = 30;
+                    } else {
+                        schedule[day][hour.toString()] = 70;
+                    }
+                }
+            });
+            return schedule;
+        }
+        
+        function createNewProfile() {
+            const name = document.getElementById("newProfileName").value.trim();
+            const copyFrom = document.getElementById("copyFromProfile").value;
+            
+            if (!name) {
+                showStatus("Please enter a profile name", true);
+                return;
+            }
+            
+            if (config.profiles[name]) {
+                showStatus("Profile already exists", true);
+                return;
+            }
+            
+            let schedule;
+            if (copyFrom && config.profiles[copyFrom]) {
+                // Deep copy the schedule
+                schedule = JSON.parse(JSON.stringify(config.profiles[copyFrom].schedule));
+            } else {
+                schedule = createDefaultSchedule();
+            }
+            
+            config.profiles[name] = {
+                name: name,
+                isActive: false,
+                schedule: schedule
+            };
+            
+            currentProfile = name;
+            
+            // Deactivate all other profiles
+            for (const profileName in config.profiles) {
+                config.profiles[profileName].isActive = false;
+            }
+            config.profiles[name].isActive = true;
+            
+            updateProfileSelector();
+            renderSchedule();
+            closeNewProfile();
+            saveSchedule();
+            showStatus(`Profile "${name}" created`);
+        }
+        
+        function showRenameProfile() {
+            if (!currentProfile) return;
+            document.getElementById("renameProfileModal").classList.add("active");
+            document.getElementById("renameProfileName").value = currentProfile;
+        }
+        
+        function closeRenameProfile() {
+            document.getElementById("renameProfileModal").classList.remove("active");
+        }
+        
+        function applyRenameProfile() {
+            const newName = document.getElementById("renameProfileName").value.trim();
+            
+            if (!newName) {
+                showStatus("Please enter a profile name", true);
+                return;
+            }
+            
+            if (newName === currentProfile) {
+                closeRenameProfile();
+                return;
+            }
+            
+            if (config.profiles[newName]) {
+                showStatus("Profile name already exists", true);
+                return;
+            }
+            
+            const oldName = currentProfile;
+            config.profiles[newName] = config.profiles[oldName];
+            config.profiles[newName].name = newName;
+            delete config.profiles[oldName];
+            
+            currentProfile = newName;
+            
+            updateProfileSelector();
+            closeRenameProfile();
+            saveSchedule();
+            showStatus(`Profile renamed to "${newName}"`);
+        }
+        
+        function deleteProfile() {
+            if (!currentProfile) return;
+            
+            if (Object.keys(config.profiles).length === 1) {
+                showStatus("Cannot delete the last profile", true);
+                return;
+            }
+            
+            if (!confirm(`Delete profile "${currentProfile}"?`)) {
+                return;
+            }
+            
+            const wasActive = config.profiles[currentProfile].isActive;
+            delete config.profiles[currentProfile];
+            
+            // Switch to first available profile
+            currentProfile = Object.keys(config.profiles)[0];
+            if (wasActive) {
+                config.profiles[currentProfile].isActive = true;
+            }
+            
+            updateProfileSelector();
+            renderSchedule();
+            saveSchedule();
+            showStatus("Profile deleted");
         }
         
         function showBulkEdit() {
@@ -403,6 +698,7 @@
         function applyBulkEdit() {
             const day = document.getElementById("bulkDay").value;
             const volume = parseInt(document.getElementById("bulkVolume").value);
+            const schedule = config.profiles[currentProfile].schedule;
             
             for (let hour = 0; hour < 24; hour++) {
                 schedule[day][hour.toString()] = volume;
@@ -424,6 +720,7 @@
         function applyCopyDay() {
             const fromDay = document.getElementById("copyFrom").value;
             const toDay = document.getElementById("copyTo").value;
+            const schedule = config.profiles[currentProfile].schedule;
             
             schedule[toDay] = {...schedule[fromDay]};
             renderSchedule();
@@ -433,6 +730,7 @@
         
         function resetSchedule() {
             if (confirm("Reset schedule to defaults? This will set 30% volume for night hours (22:00-06:00) and 70% for day hours.")) {
+                const schedule = config.profiles[currentProfile].schedule;
                 days.forEach(day => {
                     for (let hour = 0; hour < 24; hour++) {
                         if (hour >= 22 || hour < 6) {
@@ -447,8 +745,8 @@
             }
         }
         
-        // Load schedule on page load
-        loadSchedule();
+        // Load config on page load
+        loadConfig();
     </script>
 </body>
 </html>
