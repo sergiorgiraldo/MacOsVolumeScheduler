@@ -19,8 +19,7 @@ CONFIG_DIR = Path.home() / ".volume_scheduler"
 CONFIG_FILE = CONFIG_DIR / "schedule.json"
 PID_FILE = CONFIG_DIR / "scheduler.pid"
 MENU_PID_FILE = CONFIG_DIR / "menu.pid"
-HTML_FILE = Path(__file__).parent / "volume_scheduler_ui.html"
-
+HTML_FILE = Path(__file__).parent / "ui/volume_scheduler_ui.html"
 
 class ScheduleHandler(BaseHTTPRequestHandler):
     """
@@ -58,6 +57,30 @@ class ScheduleHandler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps(config).encode())
             else:
                 self.wfile.write(json.dumps({"profiles": {}}).encode())
+
+        elif self.path.endswith(".css"):
+                css_file = Path(__file__).parent / "ui" / self.path.lstrip("/")
+                if css_file.exists():
+                    self.send_response(200)
+                    self.send_header("Content-type", "text/css")
+                    self.end_headers()
+                    with open(css_file, "r") as f:
+                        self.wfile.write(f.read().encode())
+                else:
+                    self.send_response(404)
+                    self.end_headers()            
+        elif self.path.endswith(".js"):
+            js_file = Path(__file__).parent / "ui" / self.path.lstrip("/")
+            if js_file.exists():
+                self.send_response(200)
+                self.send_header("Content-type", "application/javascript")
+                self.end_headers()
+                with open(js_file, "r") as f:
+                    self.wfile.write(f.read().encode())
+            else:
+                self.send_response(404)
+                self.end_headers()
+        
         else:
             self.send_response(404)
             self.end_headers()

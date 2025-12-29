@@ -21,7 +21,6 @@ CONFIG_FILE = CONFIG_DIR / "schedule.json"
 PID_FILE = CONFIG_DIR / "scheduler.pid"
 MENU_PID_FILE = CONFIG_DIR / "menu.pid"
 LOG_FILE = CONFIG_DIR / "scheduler.log"
-HTML_FILE = Path(__file__).parent / "volume_scheduler_ui.html"
 MENU_SCRIPT = Path(__file__).parent / "volume_scheduler_menu.py"
 
 """

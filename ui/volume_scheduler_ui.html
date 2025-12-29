@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Volume Scheduler</title>
+    <link rel="stylesheet" href="main.css">
+    <script src="script.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Volume Scheduler</h1>
+        <p class="subtitle">Manage multiple volume schedules with profiles</p>
+
+        <div class="profile-selector">
+            <label>Current Profile:</label>
+            <select id="profileSelect" onchange="switchProfile()"></select>
+            <button type="button" onclick="showNewProfile()" class="success">New Profile</button>
+            <button type="button" onclick="showRenameProfile()" class="secondary">Rename</button>
+            <button type="button" onclick="deleteProfile()" class="danger">Delete</button>
+        </div>
+
+        <div class="controls">
+            <button type="button" onclick="saveSchedule()">Save Changes</button>
+            <button type="button" onclick="showBulkEdit()" class="secondary">Bulk Edit</button>
+            <button type="button" onclick="copyDay()" class="secondary">Copy Day</button>
+            <button type="button" onclick="resetSchedule()" class="secondary">Reset to Defaults</button>
+        </div>
+
+        <div class="schedule-grid">
+            <table id="scheduleTable">
+                <thead>
+                    <tr>
+                        <th>Hour</th>
+                        <th>Sun</th>
+                        <th>Mon</th>
+                        <th>Tue</th>
+                        <th>Wed</th>
+                        <th>Thu</th>
+                        <th>Fri</th>
+                        <th>Sat</th>
+                    </tr>
+                </thead>
+                <tbody id="scheduleBody">
+                </tbody>
+            </table>
+        </div>
+
+        <div id="status" class="status"></div>
+    </div>
+
+    <div id="newProfileModal" class="modal">
+        <div class="modal-content">
+            <h2>Create New Profile</h2>
+            <div class="form-group">
+                <label>Profile Name:</label>
+                <input type="text" id="newProfileName" placeholder="e.g., Work, Weekend, Quiet">
+            </div>
+            <div class="form-group">
+                <label>Copy schedule from:</label>
+                <select id="copyFromProfile">
+                    <option value="">Default schedule</option>
+                </select>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" onclick="createNewProfile()">Create</button>
+                <button type="button" onclick="closeNewProfile()" class="secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="renameProfileModal" class="modal">
+        <div class="modal-content">
+            <h2>Rename Profile</h2>
+            <div class="form-group">
+                <label>New Name:</label>
+                <input type="text" id="renameProfileName">
+            </div>
+            <div class="modal-buttons">
+                <button type="button" onclick="applyRenameProfile()">Rename</button>
+                <button type="button" onclick="closeRenameProfile()" class="secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="bulkEditModal" class="modal">
+        <div class="modal-content">
+            <h2>Bulk Edit</h2>
+            <div class="form-group">
+                <label>Select Day:</label>
+                <select id="bulkDay">
+                    <option value="Sunday">Sunday</option>
+                    <option value="Monday">Monday</option>
+                    <option value="Tuesday">Tuesday</option>
+                    <option value="Wednesday">Wednesday</option>
+                    <option value="Thursday">Thursday</option>
+                    <option value="Friday">Friday</option>
+                    <option value="Saturday">Saturday</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Volume Level (0-100):</label>
+                <input type="number" id="bulkVolume" min="0" max="100" value="70">
+            </div>
+            <div class="modal-buttons">
+                <button type="button" onclick="applyBulkEdit()">Apply</button>
+                <button type="button" onclick="closeBulkEdit()" class="secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="copyDayModal" class="modal">
+        <div class="modal-content">
+            <h2>Copy Day Schedule</h2>
+            <div class="form-group">
+                <label>Copy From:</label>
+                <select id="copyFrom">
+                    <option value="Sunday">Sunday</option>
+                    <option value="Monday">Monday</option>
+                    <option value="Tuesday">Tuesday</option>
+                    <option value="Wednesday">Wednesday</option>
+                    <option value="Thursday">Thursday</option>
+                    <option value="Friday">Friday</option>
+                    <option value="Saturday">Saturday</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Copy To:</label>
+                <select id="copyTo">
+                    <option value="Sunday">Sunday</option>
+                    <option value="Monday">Monday</option>
+                    <option value="Tuesday">Tuesday</option>
+                    <option value="Wednesday">Wednesday</option>
+                    <option value="Thursday">Thursday</option>
+                    <option value="Friday">Friday</option>
+                    <option value="Saturday">Saturday</option>
+                </select>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" onclick="applyCopyDay()">Copy</button>
+                <button type="button" onclick="closeCopyDay()" class="secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
