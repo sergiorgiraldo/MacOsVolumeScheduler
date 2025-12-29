@@ -112,7 +112,7 @@ class VolumeSchedulerMenu(rumps.App):
     def __init__(self):
         super(VolumeSchedulerMenu, self).__init__(
             "Volume Scheduler",
-            icon="/Users/GK47LX/source/MacOsVolumeScheduler/icon.svg",
+            icon=Path.home() / "source/MacOsVolumeScheduler/icon.svg",
             quit_button=None
         )
 
