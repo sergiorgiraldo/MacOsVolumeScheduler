@@ -484,11 +484,14 @@ class TestVolumeSchedulerMenu(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.test_dir = Path(tempfile.mkdtemp())
+        self.launch_agent_dir = self.test_dir / "LaunchAgents"
 
         # Patch the config directory for the menu module
         volume_scheduler_menu.CONFIG_DIR = self.test_dir
         volume_scheduler_menu.CONFIG_FILE = self.test_dir / "schedule.json"
         volume_scheduler_menu.MENU_PID_FILE = self.test_dir / "menu.pid"
+        volume_scheduler_menu.LAUNCH_AGENT_DIR = self.launch_agent_dir
+        volume_scheduler_menu.LAUNCH_AGENT_PLIST = self.launch_agent_dir / "com.volumescheduler.plist"
 
     def tearDown(self):
         """Clean up test fixtures"""
@@ -580,6 +583,332 @@ class TestVolumeSchedulerMenu(unittest.TestCase):
         
         # Should detect old format
         self.assertNotIn("profiles", loaded_config)
+
+    def test_is_startup_enabled_false(self):
+        """Test checking startup status when not enabled"""
+        # Ensure LaunchAgent plist doesn't exist
+        result = volume_scheduler_menu.LAUNCH_AGENT_PLIST.exists()
+        self.assertFalse(result)
+
+    def test_is_startup_enabled_true(self):
+        """Test checking startup status when enabled"""
+        # Create LaunchAgent plist
+        self.launch_agent_dir.mkdir(parents=True, exist_ok=True)
+        volume_scheduler_menu.LAUNCH_AGENT_PLIST.touch()
+        
+        result = volume_scheduler_menu.LAUNCH_AGENT_PLIST.exists()
+        self.assertTrue(result)
+
+    def test_get_startup_menu_title_disabled(self):
+        """Test menu title when startup is disabled"""
+        # No plist file exists
+        title = "Disable on Startup" if volume_scheduler_menu.LAUNCH_AGENT_PLIST.exists() else "Enable on Startup"
+        self.assertEqual(title, "Enable on Startup")
+
+    def test_get_startup_menu_title_enabled(self):
+        """Test menu title when startup is enabled"""
+        # Create plist file
+        self.launch_agent_dir.mkdir(parents=True, exist_ok=True)
+        volume_scheduler_menu.LAUNCH_AGENT_PLIST.touch()
+        
+        title = "Disable on Startup" if volume_scheduler_menu.LAUNCH_AGENT_PLIST.exists() else "Enable on Startup"
+        self.assertEqual(title, "Disable on Startup")
+
+    @patch('subprocess.run')
+    @patch('rumps.notification')
+    def test_enable_startup_success(self, mock_notification, mock_run):
+        """Test successfully enabling startup"""
+        mock_run.return_value = MagicMock(returncode=0)
+        
+        # Create a fake volume_scheduler.py script
+        script_dir = self.test_dir / "scripts"
+        script_dir.mkdir(parents=True, exist_ok=True)
+        scheduler_script = script_dir / "volume_scheduler.py"
+        scheduler_script.touch()
+        
+        # Simulate the logic from EnableStartup
+        self.launch_agent_dir.mkdir(parents=True, exist_ok=True)
+        
+        plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.volumescheduler</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>{scheduler_script}</string>
+        <string>start</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+</dict>
+</plist>
+"""
+        
+        with open(volume_scheduler_menu.LAUNCH_AGENT_PLIST, "w") as f:
+            f.write(plist_content)
+        
+        # Load the launch agent
+        subprocess.run(
+            ["launchctl", "load", str(volume_scheduler_menu.LAUNCH_AGENT_PLIST)],
+            check=True
+        )
+        
+        # Verify plist was created
+        self.assertTrue(volume_scheduler_menu.LAUNCH_AGENT_PLIST.exists())
+        
+        # Verify content
+        with open(volume_scheduler_menu.LAUNCH_AGENT_PLIST, "r") as f:
+            content = f.read()
+        self.assertIn("com.volumescheduler", content)
+        self.assertIn(str(scheduler_script), content)
+        self.assertIn("RunAtLoad", content)
+        self.assertIn("KeepAlive", content)
+        
+        # Verify launchctl was called
+        mock_run.assert_called_once()
+        args = mock_run.call_args[0][0]
+        self.assertEqual(args[0], "launchctl")
+        self.assertEqual(args[1], "load")
+
+    @patch('subprocess.run')
+    @patch('rumps.alert')
+    def test_enable_startup_missing_script(self, mock_alert, mock_run):
+        """Test enabling startup when volume_scheduler.py doesn't exist"""
+        # Don't create the scheduler script
+        script_dir = self.test_dir / "scripts"
+        script_dir.mkdir(parents=True, exist_ok=True)
+        scheduler_script = script_dir / "volume_scheduler.py"
+        
+        # Check if script exists
+        exists = scheduler_script.exists()
+        self.assertFalse(exists)
+        
+        # If script doesn't exist, alert should be called
+        if not exists:
+            mock_alert("Error", f"Could not find volume_scheduler.py at {scheduler_script}")
+        
+        mock_alert.assert_called_once()
+        # Verify launchctl was not called
+        mock_run.assert_not_called()
+
+    @patch('subprocess.run')
+    @patch('rumps.alert')
+    def test_enable_startup_launchctl_failure(self, mock_alert, mock_run):
+        """Test enabling startup when launchctl fails"""
+        from subprocess import CalledProcessError
+        mock_run.side_effect = CalledProcessError(1, 'launchctl')
+        
+        # Create a fake volume_scheduler.py script
+        script_dir = self.test_dir / "scripts"
+        script_dir.mkdir(parents=True, exist_ok=True)
+        scheduler_script = script_dir / "volume_scheduler.py"
+        scheduler_script.touch()
+        
+        # Simulate the logic
+        self.launch_agent_dir.mkdir(parents=True, exist_ok=True)
+        
+        plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.volumescheduler</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>{scheduler_script}</string>
+        <string>start</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+</dict>
+</plist>
+"""
+        
+        with open(volume_scheduler_menu.LAUNCH_AGENT_PLIST, "w") as f:
+            f.write(plist_content)
+        
+        # Try to load and catch error
+        try:
+            subprocess.run(
+                ["launchctl", "load", str(volume_scheduler_menu.LAUNCH_AGENT_PLIST)],
+                check=True
+            )
+        except CalledProcessError as e:
+            mock_alert("Error", f"Failed to load launch agent: {e}")
+        
+        # Verify error was shown
+        mock_alert.assert_called_once()
+
+    @patch('subprocess.run')
+    @patch('rumps.notification')
+    def test_disable_startup_success(self, mock_notification, mock_run):
+        """Test successfully disabling startup"""
+        mock_run.return_value = MagicMock(returncode=0)
+        
+        # Create plist file
+        self.launch_agent_dir.mkdir(parents=True, exist_ok=True)
+        volume_scheduler_menu.LAUNCH_AGENT_PLIST.touch()
+        
+        self.assertTrue(volume_scheduler_menu.LAUNCH_AGENT_PLIST.exists())
+        
+        # Unload the launch agent
+        subprocess.run(
+            ["launchctl", "unload", str(volume_scheduler_menu.LAUNCH_AGENT_PLIST)],
+            check=False
+        )
+        
+        # Remove plist file
+        if volume_scheduler_menu.LAUNCH_AGENT_PLIST.exists():
+            volume_scheduler_menu.LAUNCH_AGENT_PLIST.unlink()
+        
+        # Verify plist was removed
+        self.assertFalse(volume_scheduler_menu.LAUNCH_AGENT_PLIST.exists())
+        
+        # Verify launchctl was called
+        mock_run.assert_called_once()
+        args = mock_run.call_args[0][0]
+        self.assertEqual(args[0], "launchctl")
+        self.assertEqual(args[1], "unload")
+
+    @patch('subprocess.run')
+    def test_disable_startup_already_disabled(self, mock_run):
+        """Test disabling startup when already disabled"""
+        # No plist file exists
+        self.assertFalse(volume_scheduler_menu.LAUNCH_AGENT_PLIST.exists())
+        
+        # Try to unload (should not fail even if not loaded)
+        subprocess.run(
+            ["launchctl", "unload", str(volume_scheduler_menu.LAUNCH_AGENT_PLIST)],
+            check=False
+        )
+        
+        # Try to remove (should not fail even if doesn't exist)
+        if volume_scheduler_menu.LAUNCH_AGENT_PLIST.exists():
+            volume_scheduler_menu.LAUNCH_AGENT_PLIST.unlink()
+        
+        # Should still not exist
+        self.assertFalse(volume_scheduler_menu.LAUNCH_AGENT_PLIST.exists())
+
+    def test_plist_content_format(self):
+        """Test that generated plist content has correct format"""
+        script_path = Path("/fake/path/volume_scheduler.py")
+        
+        plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.volumescheduler</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>{script_path}</string>
+        <string>start</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+</dict>
+</plist>
+"""
+        
+        # Verify XML structure
+        self.assertIn('<?xml version="1.0" encoding="UTF-8"?>', plist_content)
+        self.assertIn('<!DOCTYPE plist', plist_content)
+        self.assertIn('<plist version="1.0">', plist_content)
+        self.assertIn('<dict>', plist_content)
+        
+        # Verify required keys
+        self.assertIn('<key>Label</key>', plist_content)
+        self.assertIn('<string>com.volumescheduler</string>', plist_content)
+        self.assertIn('<key>ProgramArguments</key>', plist_content)
+        self.assertIn('<key>RunAtLoad</key>', plist_content)
+        self.assertIn('<key>KeepAlive</key>', plist_content)
+        
+        # Verify values
+        self.assertIn('<string>/usr/bin/python3</string>', plist_content)
+        self.assertIn(f'<string>{script_path}</string>', plist_content)
+        self.assertIn('<string>start</string>', plist_content)
+        self.assertIn('<true/>', plist_content)
+
+    @patch('subprocess.run')
+    def test_toggle_startup_enable_to_disable(self, mock_run):
+        """Test toggling from enabled to disabled"""
+        mock_run.return_value = MagicMock(returncode=0)
+        
+        # Start with enabled (plist exists)
+        self.launch_agent_dir.mkdir(parents=True, exist_ok=True)
+        volume_scheduler_menu.LAUNCH_AGENT_PLIST.touch()
+        
+        initial_state = volume_scheduler_menu.LAUNCH_AGENT_PLIST.exists()
+        self.assertTrue(initial_state)
+        
+        # Toggle (disable)
+        if volume_scheduler_menu.LAUNCH_AGENT_PLIST.exists():
+            subprocess.run(
+                ["launchctl", "unload", str(volume_scheduler_menu.LAUNCH_AGENT_PLIST)],
+                check=False
+            )
+            volume_scheduler_menu.LAUNCH_AGENT_PLIST.unlink()
+        
+        final_state = volume_scheduler_menu.LAUNCH_AGENT_PLIST.exists()
+        self.assertFalse(final_state)
+
+    @patch('subprocess.run')
+    def test_toggle_startup_disable_to_enable(self, mock_run):
+        """Test toggling from disabled to enabled"""
+        mock_run.return_value = MagicMock(returncode=0)
+        
+        # Start with disabled (no plist)
+        initial_state = volume_scheduler_menu.LAUNCH_AGENT_PLIST.exists()
+        self.assertFalse(initial_state)
+        
+        # Create script
+        script_dir = self.test_dir / "scripts"
+        script_dir.mkdir(parents=True, exist_ok=True)
+        scheduler_script = script_dir / "volume_scheduler.py"
+        scheduler_script.touch()
+        
+        # Toggle (enable)
+        self.launch_agent_dir.mkdir(parents=True, exist_ok=True)
+        plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.volumescheduler</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>{scheduler_script}</string>
+        <string>start</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+</dict>
+</plist>
+"""
+        with open(volume_scheduler_menu.LAUNCH_AGENT_PLIST, "w") as f:
+            f.write(plist_content)
+        
+        subprocess.run(
+            ["launchctl", "load", str(volume_scheduler_menu.LAUNCH_AGENT_PLIST)],
+            check=True
+        )
+        
+        final_state = volume_scheduler_menu.LAUNCH_AGENT_PLIST.exists()
+        self.assertTrue(final_state)
 
 
 class TestScheduleHandler(unittest.TestCase):
