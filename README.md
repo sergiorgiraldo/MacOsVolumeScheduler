@@ -62,6 +62,8 @@ Menu also shows current volume and current profile.
 
 ## Startup
 
+Enable via menu or do manually as below.
+
 ### Create the plist file
 
 ```bash

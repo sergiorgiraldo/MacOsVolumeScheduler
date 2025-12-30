@@ -20,6 +20,9 @@ CONFIG_FILE = CONFIG_DIR / "schedule.json"
 PID_FILE = CONFIG_DIR / "scheduler.pid"
 MENU_PID_FILE = CONFIG_DIR / "menu.pid"
 HTML_FILE = Path(__file__).parent / "ui/volume_scheduler_ui.html"
+LAUNCH_AGENT_DIR = Path.home() / "Library/LaunchAgents"
+LAUNCH_AGENT_PLIST = LAUNCH_AGENT_DIR / "com.volumescheduler.plist"
+ICON_FILE = Path(__file__).parent / "icon.svg"
 
 class ScheduleHandler(BaseHTTPRequestHandler):
     """
@@ -109,10 +112,11 @@ class ScheduleHandler(BaseHTTPRequestHandler):
 
 
 class VolumeSchedulerMenu(rumps.App):
+    print(Path(__file__).parent / "icon.svg")
     def __init__(self):
         super(VolumeSchedulerMenu, self).__init__(
             "Volume Scheduler",
-            icon=Path.home() / "source/MacOsVolumeScheduler/icon.svg",
+            icon=str(ICON_FILE),
             quit_button=None
         )
 
@@ -123,12 +127,17 @@ class VolumeSchedulerMenu(rumps.App):
         # Menu items
         self.current_volume_item = rumps.MenuItem("Current Volume: --")
         self.current_profile_item = rumps.MenuItem("Profile: --")
+        self.startup_item = rumps.MenuItem(
+            self.GetStartupMenuTitle(), 
+            callback=self.ToggleStartup
+        )
         
         self.menu = [
             self.current_volume_item,
             self.current_profile_item,
             None,  # Separator
             rumps.MenuItem("Edit Schedule", callback=self.EditSchedule),
+            self.startup_item,
             None,  # Separator
             rumps.MenuItem("Quit", callback=self.QuitApp)
         ]
@@ -185,6 +194,128 @@ class VolumeSchedulerMenu(rumps.App):
             return "None"
         except:
             return "Error"
+
+    """
+    Check if launch agent is installed
+    """
+
+    def IsStartupEnabled(self):
+        return LAUNCH_AGENT_PLIST.exists()
+
+    """
+    Get the appropriate menu title for startup toggle
+    """
+
+    def GetStartupMenuTitle(self):
+        return "Disable on Startup" if self.IsStartupEnabled() else "Enable on Startup"
+
+    """
+    Toggle startup launch agent
+    """
+
+    def ToggleStartup(self, _):
+        if self.IsStartupEnabled():
+            self.DisableStartup()
+        else:
+            self.EnableStartup()
+        
+        # Update menu title
+        self.startup_item.title = self.GetStartupMenuTitle()
+
+    """
+    Enable startup by creating launch agent
+    """
+
+    def EnableStartup(self):
+        try:
+            # Get the path to volume_scheduler.py (sibling of this script)
+            scheduler_script = Path(__file__).parent / "volume_scheduler.py"
+            
+            if not scheduler_script.exists():
+                rumps.alert(
+                    "Error",
+                    f"Could not find volume_scheduler.py at {scheduler_script}"
+                )
+                return
+
+            # Create LaunchAgents directory if it doesn't exist
+            LAUNCH_AGENT_DIR.mkdir(parents=True, exist_ok=True)
+
+            # Create plist content
+            plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.volumescheduler</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>{scheduler_script}</string>
+        <string>start</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+</dict>
+</plist>
+"""
+
+            # Write plist file
+            with open(LAUNCH_AGENT_PLIST, "w") as f:
+                f.write(plist_content)
+
+            # Load the launch agent
+            subprocess.run(
+                ["launchctl", "load", str(LAUNCH_AGENT_PLIST)],
+                check=True
+            )
+
+            rumps.notification(
+                "Volume Scheduler",
+                "Startup Enabled",
+                "Volume Scheduler will now start automatically on login"
+            )
+
+        except subprocess.CalledProcessError as e:
+            rumps.alert(
+                "Error",
+                f"Failed to load launch agent: {e}"
+            )
+        except Exception as e:
+            rumps.alert(
+                "Error",
+                f"Failed to enable startup: {e}"
+            )
+
+    """
+    Disable startup by removing launch agent
+    """
+
+    def DisableStartup(self):
+        try:
+            # Unload the launch agent first
+            subprocess.run(
+                ["launchctl", "unload", str(LAUNCH_AGENT_PLIST)],
+                check=False  # Don't fail if already unloaded
+            )
+
+            # Remove plist file
+            if LAUNCH_AGENT_PLIST.exists():
+                LAUNCH_AGENT_PLIST.unlink()
+
+            rumps.notification(
+                "Volume Scheduler",
+                "Startup Disabled",
+                "Volume Scheduler will no longer start automatically on login"
+            )
+
+        except Exception as e:
+            rumps.alert(
+                "Error",
+                f"Failed to disable startup: {e}"
+            )
 
     """
     Update the current volume display
