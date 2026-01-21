@@ -112,7 +112,6 @@ class ScheduleHandler(BaseHTTPRequestHandler):
 
 
 class VolumeSchedulerMenu(rumps.App):
-    print(Path(__file__).parent / "icon.svg")
     def __init__(self):
         super(VolumeSchedulerMenu, self).__init__(
             "Volume Scheduler",
