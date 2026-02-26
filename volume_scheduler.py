@@ -23,6 +23,8 @@ MENU_PID_FILE = CONFIG_DIR / "menu.pid"
 LOG_FILE = CONFIG_DIR / "scheduler.log"
 MENU_SCRIPT = Path(__file__).parent / "volume_scheduler_menu.py"
 
+DEBUG = False
+
 """
 Setup logging to file
 """
@@ -175,14 +177,23 @@ class VolumeScheduler:
 
     def SetVolume(self, level):
         try:
+            self.LogDebug("Set Volume")
             # AppleScript command to set volume
             script = f"set volume output volume {level}"
             subprocess.run(["osascript", "-e", script], check=True)
+            self.LogDebug(f"Set Volume Success")
             return True
         except subprocess.CalledProcessError as e:
+            self.LogDebug(f"Set Volume Error: {e}")
+            self.LogDebug(f"Set Volume Error: {sys.executable}")
+            logger.error(f"Error setting volume by: {sys.executable}")
             logger.error(f"Error setting volume: {e}")
             return False
 
+    def LogDebug(self, msg):
+            if DEBUG:
+                print(msg)
+    
     """
     Get the volume level for current day and hour
     """
@@ -221,6 +232,7 @@ class VolumeScheduler:
 
     def Run(self):
         logger.info("Volume Scheduler started")
+        logger.info(f"Executable: {sys.executable}")
 
         # Write PID file
         CONFIG_DIR.mkdir(exist_ok=True)
@@ -656,20 +668,24 @@ def main():
                     print(f"Scheduler already running (PID: {pid})")
                     return
 
-            logger.info("Starting Volume Scheduler in background...")
-            logger.info(f"Logs: {CONFIG_DIR / 'scheduler.log'}")
+            if not DEBUG:
+                logger.info("Starting Volume Scheduler in background...")
+                logger.info(f"Logs: {CONFIG_DIR / 'scheduler.log'}")
 
-            # Start the menu bar app first (before daemonizing)
-            if MENU_SCRIPT.exists():
-                logger.info("Starting menu bar app...")
-                StartMenubarApp()
+                # Start the menu bar app first (before daemonizing)
+                if MENU_SCRIPT.exists():
+                    logger.info("Starting menu bar app...")
+                    StartMenubarApp()
 
-            # Fork to background
-            Daemonize()
+                # Fork to background
+                Daemonize()
 
-            # Now running as daemon
-            scheduler = VolumeScheduler()
-            scheduler.Run()
+                # Now running as daemon
+                scheduler = VolumeScheduler()
+                scheduler.Run()
+            else:
+                scheduler = VolumeScheduler()
+                scheduler.Run()
 
         elif command == "stop":
             StopScheduler()
