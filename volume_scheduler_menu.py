@@ -252,10 +252,9 @@ class VolumeSchedulerMenu(rumps.App):
         <string>/usr/bin/python3</string>
         <string>{scheduler_script}</string>
         <string>start</string>
+        <string>--no-daemon</string>
     </array>
     <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
     <true/>
 </dict>
 </plist>
