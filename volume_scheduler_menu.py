@@ -213,12 +213,17 @@ class VolumeSchedulerMenu(rumps.App):
     """
 
     def ToggleStartup(self, _):
+        # Run in a background thread so the main AppKit thread is not blocked
+        # (blocking it causes macOS to grey out all menu items)
+        threading.Thread(target=self._ToggleStartupWorker, daemon=True).start()
+
+    def _ToggleStartupWorker(self):
         if self.IsStartupEnabled():
             self.DisableStartup()
         else:
             self.EnableStartup()
-        
-        # Update menu title
+
+        # Update menu title back on the main thread via rumps
         self.startup_item.title = self.GetStartupMenuTitle()
 
     """
