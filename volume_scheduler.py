@@ -14,6 +14,7 @@ import time
 import signal
 import sys
 import logging
+import threading
 
 # Configuration file path
 CONFIG_DIR = Path.home() / ".volume_scheduler"
@@ -58,6 +59,7 @@ class VolumeScheduler:
         self.config = self.LoadConfig()
         self.running = True
         self.last_hour = None
+        self.stop_event = threading.Event()
 
         # Setup signal handlers for clean shutdown
         signal.signal(signal.SIGTERM, self.HandleSignal)
@@ -70,6 +72,7 @@ class VolumeScheduler:
     def HandleSignal(self, signum, frame):
         logger.info("Received shutdown signal")
         self.running = False
+        self.stop_event.set()  # Wake up the sleep immediately
 
     """
     Create default schedule for a profile
@@ -245,7 +248,10 @@ class VolumeScheduler:
 
             while self.running:
                 self.CheckAndUpdateVolume()
-                time.sleep(300)  # Check every 5 minutes
+                # Use an Event instead of time.sleep so a signal wakes us
+                # immediately rather than waiting up to 5 minutes (PEP 475)
+                self.stop_event.wait(300)
+                self.stop_event.clear()
 
         except (KeyboardInterrupt, SystemExit):
             pass
@@ -307,27 +313,43 @@ Stop the menu bar application
 
 
 def StopMenubarApp():
-    if MENU_PID_FILE.exists():
-        try:
-            with open(MENU_PID_FILE, "r") as f:
-                pid = int(f.read().strip())
+    if not MENU_PID_FILE.exists():
+        return
 
-            os.kill(pid, signal.SIGTERM)
-            logger.info("Menu bar app stopped")
+    try:
+        with open(MENU_PID_FILE, "r") as f:
+            pid = int(f.read().strip())
 
-            # Wait a bit for it to clean up
-            time.sleep(0.5)
+        if not IsProcessRunning(pid):
+            logger.warning("Menu bar app not running (stale PID file)")
+            MENU_PID_FILE.unlink()
+            return
 
-            # Clean up PID file
-            if MENU_PID_FILE.exists():
-                MENU_PID_FILE.unlink()
+        os.kill(pid, signal.SIGTERM)
+        logger.info(f"Sent SIGTERM to menu bar app (PID: {pid})")
 
-        except ProcessLookupError:
-            logger.warning("Menu bar app not running")
-            if MENU_PID_FILE.exists():
-                MENU_PID_FILE.unlink()
-        except Exception as e:
-            logger.error(f"Error stopping menu bar app: {e}")
+        # Wait up to 3 seconds for a clean exit
+        for _ in range(15):
+            time.sleep(0.2)
+            if not IsProcessRunning(pid):
+                break
+        else:
+            # Process didn't exit — force-kill it
+            logger.warning("Menu bar app did not stop cleanly, sending SIGKILL")
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+        logger.info("Menu bar app stopped")
+
+    except ProcessLookupError:
+        logger.warning("Menu bar app not running")
+    except Exception as e:
+        logger.error(f"Error stopping menu bar app: {e}")
+    finally:
+        if MENU_PID_FILE.exists():
+            MENU_PID_FILE.unlink()
 
 
 """
@@ -668,19 +690,36 @@ def main():
                     print(f"Scheduler already running (PID: {pid})")
                     return
 
+            no_daemon = "--no-daemon" in sys.argv
+
             if not DEBUG:
                 logger.info("Starting Volume Scheduler in background...")
                 logger.info(f"Logs: {CONFIG_DIR / 'scheduler.log'}")
 
-                # Start the menu bar app first (before daemonizing)
+                # Start the menu bar app only if not already running
                 if MENU_SCRIPT.exists():
-                    logger.info("Starting menu bar app...")
-                    StartMenubarApp()
+                    menu_already_running = False
+                    if MENU_PID_FILE.exists():
+                        try:
+                            with open(MENU_PID_FILE, "r") as f:
+                                menu_pid = int(f.read().strip())
+                            if IsProcessRunning(menu_pid):
+                                logger.info(f"Menu bar app already running (PID: {menu_pid})")
+                                menu_already_running = True
+                            else:
+                                MENU_PID_FILE.unlink()  # Remove stale PID file
+                        except Exception:
+                            pass
 
-                # Fork to background
-                Daemonize()
+                    if not menu_already_running:
+                        logger.info("Starting menu bar app...")
+                        StartMenubarApp()
 
-                # Now running as daemon
+                if not no_daemon:
+                    # Fork to background (interactive / manual start)
+                    Daemonize()
+
+                # Now running as daemon (or foreground if --no-daemon)
                 scheduler = VolumeScheduler()
                 scheduler.Run()
             else:

@@ -88,20 +88,40 @@ function renderSchedule() {
 	const tbody = document.getElementById("scheduleBody");
 	tbody.innerHTML = "";
 
+	const now = new Date();
+	const currentDay = days[now.getDay()];
+	const currentHour = now.getHours();
+
+	// Highlight current day column header
+	const headers = document.querySelectorAll("#scheduleTable thead th");
+	headers.forEach((th) => (th.style.backgroundColor = ""));
+	const currentDayThIndex = now.getDay() + 1; // +1 to skip the "Hour" column
+	if (headers[currentDayThIndex]) {
+		headers[currentDayThIndex].style.backgroundColor = "#add8e6";
+	}
+
+	let currentRow = null;
+
 	for (let hour = 0; hour < 24; hour++) {
 		const row = document.createElement("tr");
 
 		const hourCell = document.createElement("td");
 		hourCell.className = "hour-label";
 		hourCell.textContent = `${hour.toString().padStart(2, "0")}:00`;
+		if (hour === currentHour) {
+			hourCell.style.backgroundColor = "#add8e6";
+			currentRow = row;
+		}
 		row.appendChild(hourCell);
 
 		days.forEach((day) => {
 			const cell = document.createElement("td");
 			const volume = schedule[day][hour.toString()];
+			const isCurrentCell = day === currentDay && hour === currentHour;
 
 			cell.innerHTML = `
-                        <div class="volume-cell" onclick="editCell('${day}', ${hour})">
+                        <div class="volume-cell" onclick="editCell('${day}', ${hour})"
+                             style="${isCurrentCell ? "background-color: #c0c0c0;" : ""}">
                             <div class="volume-bar" style="height: ${volume}%"></div>
                             <div class="volume-label">${volume}%</div>
                         </div>
@@ -111,6 +131,11 @@ function renderSchedule() {
 		});
 
 		tbody.appendChild(row);
+	}
+
+	// Scroll current hour into view
+	if (currentRow) {
+		currentRow.scrollIntoView({ behavior: "smooth", block: "center" });
 	}
 }
 
