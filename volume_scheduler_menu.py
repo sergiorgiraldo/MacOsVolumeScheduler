@@ -13,6 +13,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
 from pathlib import Path
 import os
+import sys
 
 # Import from your existing script
 CONFIG_DIR = Path.home() / ".volume_scheduler"
@@ -148,6 +149,9 @@ class VolumeSchedulerMenu(rumps.App):
         # Write PID file
         self.WritePIDFile()
 
+        # Ensure background scheduler is running
+        self.StartSchedulerIfNeeded()
+
     """
     Write PID file for this menu bar app
     """
@@ -156,6 +160,32 @@ class VolumeSchedulerMenu(rumps.App):
         CONFIG_DIR.mkdir(exist_ok=True)
         with open(MENU_PID_FILE, "w") as f:
             f.write(str(os.getpid()))
+
+    """
+    Start the background scheduler if it is not already running
+    """
+
+    def StartSchedulerIfNeeded(self):
+        scheduler_script = Path(__file__).parent / "volume_scheduler.py"
+        if not scheduler_script.exists():
+            return
+
+        if PID_FILE.exists():
+            try:
+                with open(PID_FILE, "r") as f:
+                    pid = int(f.read().strip())
+                # Check if the process is actually alive
+                os.kill(pid, 0)
+                return  # Already running
+            except (ProcessLookupError, ValueError):
+                PID_FILE.unlink(missing_ok=True)
+
+        subprocess.Popen(
+            [sys.executable, str(scheduler_script), "start"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True
+        )
 
     """
     Get current macOS volume level
@@ -232,20 +262,16 @@ class VolumeSchedulerMenu(rumps.App):
 
     def EnableStartup(self):
         try:
-            # Get the path to volume_scheduler.py (sibling of this script)
-            scheduler_script = Path(__file__).parent / "volume_scheduler.py"
-            
-            if not scheduler_script.exists():
-                rumps.alert(
-                    "Error",
-                    f"Could not find volume_scheduler.py at {scheduler_script}"
-                )
-                return
-
             # Create LaunchAgents directory if it doesn't exist
             LAUNCH_AGENT_DIR.mkdir(parents=True, exist_ok=True)
 
+            # Use the same Python interpreter that is currently running
+            # (ensures rumps and all dependencies are available)
+            menu_script = Path(__file__).resolve()
+
             # Create plist content
+            # LimitLoadToSessionType=Aqua ensures the agent runs in the
+            # user's GUI login session so the menu bar app can access WindowServer
             plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -254,13 +280,13 @@ class VolumeSchedulerMenu(rumps.App):
     <string>com.volumescheduler</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/bin/python3</string>
-        <string>{scheduler_script}</string>
-        <string>start</string>
-        <string>--no-daemon</string>
+        <string>{sys.executable}</string>
+        <string>{menu_script}</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
 </dict>
 </plist>
 """
