@@ -5,6 +5,10 @@ Adds a menu bar icon with volume control interface
 Now with profile support
 """
 
+import AppKit
+app = AppKit.NSApplication.sharedApplication()
+app.setActivationPolicy_(AppKit.NSApplicationActivationPolicyAccessory)
+
 import rumps
 import subprocess
 import webbrowser
